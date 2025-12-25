@@ -5,10 +5,23 @@ export type QuizQuestion = {
   category: QuizCategory;
   question: string;
   type: "single_select";
-  options: string[];         // jsonb in DB
-  weightings: Record<string, number>; // jsonb in DB
+  options: string[]; // jsonb in DB
+  weightings: LegacyWeightings | WeightingRule; // jsonb in DB
   order: number;
+  key?: string | null;
 };
+
+export type LegacyWeightings = Record<string, number>;
+
+export type FieldEqualsRule = {
+  type: "field_equals";
+  field: string;
+  weight?: number;
+  pointsByOption: Record<string, number>;
+  reasonsByOption?: Record<string, string>;
+};
+
+export type WeightingRule = FieldEqualsRule;
 
 export type Product = {
   id: string;
@@ -18,7 +31,7 @@ export type Product = {
   price_hint: string | null;
   affiliate_links: Record<string, string>;
   warranty_text: string | null;
-  specs: Record<string, any>;
+  specs: Record<string, unknown>;
 };
 
 export type Submission = {
@@ -26,9 +39,33 @@ export type Submission = {
   email: string | null;
   first_name: string | null;
   category: QuizCategory;
-  answers: Record<string, any>;
-  top_3: any[]; // jsonb in DB
+  answers: Record<string, unknown>;
+  top_3: Recommendation[]; // jsonb in DB
   score_percent: number | null;
-  utm: Record<string, any> | null;
+  utm: Record<string, unknown> | null;
   created_at: string;
+};
+
+export type RecoProduct = Product & {
+  specs: Record<string, unknown>;
+};
+
+export type Recommendation = {
+  product_id: string;
+  brand: string;
+  model: string;
+  price_hint: string | null;
+  affiliate_links: Record<string, string>;
+  warranty_text: string | null;
+  specs?: Record<string, unknown>;
+  score: number;
+  percent: number;
+  reasons: string[];
+};
+
+export type RecommendConfig = {
+  brandQuestionId?: string;
+  warrantyQuestionId?: string;
+  performanceQuestionId?: string;
+  questionFieldMap?: Record<string, string>;
 };

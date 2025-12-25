@@ -51,8 +51,9 @@ export default function QuizClient({ category, questions }: Props) {
 
       const json = await res.json();
       router.push(`/results/${json.submissionId}`);
-    } catch (e: any) {
-      alert(e?.message ?? "Something went wrong.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong.";
+      alert(message);
       setIsSubmitting(false);
     }
   }
