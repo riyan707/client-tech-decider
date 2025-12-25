@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/app/utils/supabase/server";
-import type { Submission } from "@/lib/types";
+import type { Recommendation, Submission } from "@/lib/types";
 import { notFound } from "next/navigation";
 
 export default async function ResultsPage({
@@ -18,7 +18,7 @@ export default async function ResultsPage({
   if (error || !data) return notFound();
 
   const submission = data as unknown as Submission;
-  const top3 = Array.isArray(submission.top_3) ? submission.top_3 : [];
+  const top3: Recommendation[] = Array.isArray(submission.top_3) ? submission.top_3 : [];
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-10">
@@ -36,7 +36,7 @@ export default async function ResultsPage({
             No recommendations found for this submission.
           </div>
         ) : (
-          top3.map((item: any, idx: number) => (
+          top3.map((item, idx: number) => (
             <div key={item.product_id ?? idx} className="rounded-2xl border p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -60,7 +60,7 @@ export default async function ResultsPage({
               <div className="mt-4 text-sm text-neutral-700">
                 <p className="font-medium">Why this was picked</p>
                 <ul className="mt-2 list-disc pl-5">
-                  {(item.reasons ?? ["Placeholder explanation (Step 5 adds scoring)."]).map(
+                  {(item.reasons && item.reasons.length > 0 ? item.reasons : ["Matched your preferences."]).map(
                     (r: string, i: number) => (
                       <li key={i}>{r}</li>
                     )
@@ -90,7 +90,7 @@ function renderAffiliateButtons(affiliateLinks?: Record<string, string>) {
   if (!affiliateLinks || typeof affiliateLinks !== "object") return null;
 
   const entries = Object.entries(affiliateLinks).filter(
-    ([_, url]) => typeof url === "string" && url.trim().length > 0
+    ([name, url]) => typeof url === "string" && url.trim().length > 0 && name.trim().length > 0
   );
 
   if (entries.length === 0)
