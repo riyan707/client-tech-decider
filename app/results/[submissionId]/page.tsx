@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/app/utils/supabase/server";
-import type { Recommendation, Submission } from "@/lib/types";
+import type { Submission } from "@/lib/types";
 import { notFound } from "next/navigation";
 
 export default async function ResultsPage({
@@ -18,25 +18,68 @@ export default async function ResultsPage({
   if (error || !data) return notFound();
 
   const submission = data as unknown as Submission;
-  const top3: Recommendation[] = Array.isArray(submission.top_3) ? submission.top_3 : [];
+  const top3 = Array.isArray(submission.top_3) ? submission.top_3 : [];
+  const best = top3[0] ?? null;
+
+  const overall = typeof submission.score_percent === "number" ? submission.score_percent : null;
+  const summaryReasons: string[] =
+    best?.reasons && Array.isArray(best.reasons) && best.reasons.length > 0
+      ? best.reasons
+      : ["Matched your preferences."];
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-10">
       <h1 className="text-2xl font-semibold">Your Top Recommendations</h1>
+
       <p className="mt-2 text-sm text-neutral-600">
         Category: <span className="font-medium capitalize">{submission.category}</span>
-        {submission.score_percent !== null ? (
-          <> • Overall match: <span className="font-medium">{submission.score_percent}%</span></>
-        ) : null}
       </p>
 
+      {/* Overall match + summary */}
+      <div className="mt-6 rounded-2xl border p-6">
+        <div className="flex items-baseline justify-between gap-4">
+          <div>
+            <p className="text-sm text-neutral-600">Overall match</p>
+            <p className="mt-1 text-3xl font-semibold">
+              {overall !== null ? `${overall}%` : "—"}
+            </p>
+          </div>
+          {best ? (
+            <div className="text-right">
+              <p className="text-sm text-neutral-600">Best pick</p>
+              <p className="mt-1 text-sm font-medium">
+                {best.brand} {best.model}
+              </p>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Simple progress bar (no dependency) */}
+        <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+          <div
+            className="h-full bg-neutral-900"
+            style={{ width: `${Math.max(0, Math.min(100, overall ?? 0))}%` }}
+          />
+        </div>
+
+        <div className="mt-5">
+          <p className="text-sm font-medium text-neutral-800">Personalised summary</p>
+          <ul className="mt-2 list-disc pl-5 text-sm text-neutral-700">
+            {summaryReasons.slice(0, 4).map((r: string, i: number) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {/* Cards */}
       <div className="mt-8 grid gap-4">
         {top3.length === 0 ? (
           <div className="rounded-xl border p-4 text-sm text-neutral-600">
             No recommendations found for this submission.
           </div>
         ) : (
-          top3.map((item, idx: number) => (
+          top3.map((item: any, idx: number) => (
             <div key={item.product_id ?? idx} className="rounded-2xl border p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -50,7 +93,7 @@ export default async function ResultsPage({
                   ) : null}
                 </div>
 
-                {item.percent !== null ? (
+                {item.percent !== null && item.percent !== undefined ? (
                   <div className="rounded-xl bg-neutral-100 px-3 py-2 text-sm">
                     Match: <span className="font-semibold">{item.percent}%</span>
                   </div>
@@ -60,7 +103,7 @@ export default async function ResultsPage({
               <div className="mt-4 text-sm text-neutral-700">
                 <p className="font-medium">Why this was picked</p>
                 <ul className="mt-2 list-disc pl-5">
-                  {(item.reasons && item.reasons.length > 0 ? item.reasons : ["Matched your preferences."]).map(
+                  {(Array.isArray(item.reasons) && item.reasons.length ? item.reasons : ["Matched your preferences."]).map(
                     (r: string, i: number) => (
                       <li key={i}>{r}</li>
                     )
@@ -90,7 +133,7 @@ function renderAffiliateButtons(affiliateLinks?: Record<string, string>) {
   if (!affiliateLinks || typeof affiliateLinks !== "object") return null;
 
   const entries = Object.entries(affiliateLinks).filter(
-    ([name, url]) => typeof url === "string" && url.trim().length > 0 && name.trim().length > 0
+    ([_, url]) => typeof url === "string" && url.trim().length > 0
   );
 
   if (entries.length === 0)

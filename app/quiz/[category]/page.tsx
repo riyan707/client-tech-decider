@@ -8,7 +8,7 @@ export default async function QuizPage({
 }: {
   params: Promise<{ category: string }>;
 }) {
-  const { category: rawCategory } = await params;
+  const { category: rawCategory } = await params; // ✅ unwrap
   const category = rawCategory as QuizCategory;
 
   if (category !== "smartphones" && category !== "tvs") return notFound();

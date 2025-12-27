@@ -1,3 +1,5 @@
+// lib/recommendation.ts
+
 import type {
   FieldEqualsRule,
   LegacyWeightings,
@@ -14,7 +16,12 @@ export type WeightedQuestionRule = {
   rule: WeightingRule;
 };
 
-const NO_PREFERENCE_VALUES = new Set(["no preference", "no_preference", ""]);
+const NO_PREFERENCE_VALUES = new Set([
+  "no preference",
+  "no_preference",
+  "none",
+  "", // empty string
+]);
 
 export function isNoPreference(value: unknown): boolean {
   if (value === null || value === undefined) return true;
@@ -29,9 +36,14 @@ export function normalizeString(value: unknown): string {
   return String(value).trim().toLowerCase();
 }
 
+function normalizeMatches(a: unknown, b: unknown): boolean {
+  return normalizeString(a) === normalizeString(b);
+}
+
 function defaultReasonFromQuestion(question: string): string {
   const lower = question.toLowerCase();
-  if (lower.includes("budget") || lower.includes("price")) {
+
+  if (lower.includes("budget") || lower.includes("price") || lower.includes("cost")) {
     return "Fits your budget range.";
   }
   if (lower.includes("camera")) {
@@ -40,22 +52,46 @@ function defaultReasonFromQuestion(question: string): string {
   if (lower.includes("battery")) {
     return "Matches your battery priority.";
   }
-  if (lower.includes("performance") || lower.includes("speed")) {
+  if (lower.includes("performance") || lower.includes("speed") || lower.includes("gaming")) {
     return "Matches your performance needs.";
   }
-  if (lower.includes("screen")) {
+  if (lower.includes("screen") || lower.includes("size") || lower.includes("display")) {
     return "Matches your preferred screen size.";
   }
+  if (lower.includes("brand")) {
+    return "Matches your brand preference.";
+  }
+  if (lower.includes("warranty")) {
+    return "Matches your warranty preference.";
+  }
+
   return "Matches your preference.";
 }
 
-function buildLegacyReason(question: string, option: string): string {
-  const specific = defaultReasonFromQuestion(question);
-  return specific || `Matches your ${option} preference.`;
+function buildLegacyReason(questionText: string, _option: string): string {
+  // Keep it simple and deterministic: reason based on question text.
+  return defaultReasonFromQuestion(questionText);
 }
 
-function normalizeMatches(a: unknown, b: unknown): boolean {
-  return normalizeString(a) === normalizeString(b);
+/**
+ * quiz_questions.options is often stored as a JSON string in Supabase.
+ * This makes sure we always end up with a string[].
+ */
+function safeOptionsArray(options: unknown): string[] {
+  if (Array.isArray(options)) return options.map(String);
+
+  if (typeof options === "string") {
+    try {
+      const parsed = JSON.parse(options);
+      if (Array.isArray(parsed)) return parsed.map(String);
+      // If it's a plain string (not JSON array), treat as single option
+      if (options.trim().length) return [options];
+    } catch {
+      if (options.trim().length) return [options];
+    }
+  }
+
+  return [];
 }
 
 function evaluateFieldEqualsRule(
@@ -66,17 +102,28 @@ function evaluateFieldEqualsRule(
 ) {
   const weight = rule.weight ?? 1;
   const points = rule.pointsByOption?.[answer] ?? 0;
-  const maxPoints = points * weight;
+
   if (isNoPreference(answer)) {
     return { score: 0, maxPoints: 0, reason: null as string | null };
   }
 
+  const maxPoints = points * weight;
+
+  // Look in product.specs first, then fall back to top-level product fields
   const productRecord = product as unknown as Record<string, unknown>;
   const productValue = product.specs?.[rule.field] ?? productRecord[rule.field];
+
   const matches = normalizeMatches(productValue, answer);
   const score = matches ? maxPoints : 0;
-  const reasonSource = rule.reasonsByOption?.[answer];
-  const reason = matches && maxPoints > 0 ? reasonSource ?? buildLegacyReason(questionText, answer) : null;
+
+  // reasonsByOption can be stored as string OR string[]
+  const reasonSource = (rule.reasonsByOption as any)?.[answer];
+  const reason =
+    matches && maxPoints > 0
+      ? (Array.isArray(reasonSource) ? reasonSource[0] : reasonSource) ??
+        buildLegacyReason(questionText, answer)
+      : null;
+
   return { score, maxPoints, reason };
 }
 
@@ -88,11 +135,16 @@ export function recommendTopProducts(
 ): Recommendation[] {
   const answeredRules = rules.filter((r) => !isNoPreference(answers[r.questionId]));
 
+  // Compute max possible score for this submission (skip no preference)
   const totalMaxScore = answeredRules.reduce((sum, r) => {
     const answer = answers[r.questionId];
     if (!answer || isNoPreference(answer)) return sum;
-    const weight = (r.rule as FieldEqualsRule).weight ?? 1;
-    const points = (r.rule as FieldEqualsRule).pointsByOption?.[answer] ?? 0;
+
+    if (r.rule.type !== "field_equals") return sum;
+
+    const rule = r.rule as FieldEqualsRule;
+    const weight = rule.weight ?? 1;
+    const points = rule.pointsByOption?.[answer] ?? 0;
     return sum + weight * points;
   }, 0);
 
@@ -102,8 +154,10 @@ export function recommendTopProducts(
 
     for (const entry of answeredRules) {
       const answer = answers[entry.questionId];
+      if (!answer || isNoPreference(answer)) continue;
+
       if (entry.rule.type === "field_equals") {
-        const result = evaluateFieldEqualsRule(product, entry.rule, answer, entry.questionText);
+        const result = evaluateFieldEqualsRule(product, entry.rule as FieldEqualsRule, answer, entry.questionText);
         score += result.score;
         if (result.reason) reasons.push(result.reason);
       }
@@ -111,18 +165,20 @@ export function recommendTopProducts(
 
     const percent = totalMaxScore > 0 ? Math.round((score / totalMaxScore) * 100) : 0;
     const tieBreak = computeTieBreakScore(product, answers, config);
+
     return { product, score, percent, reasons, tieBreak };
   });
 
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
+
     // tie-breaker priority: brand > warranty > performance
     for (let i = 0; i < a.tieBreak.length; i++) {
-      if (a.tieBreak[i] !== b.tieBreak[i]) {
-        return b.tieBreak[i] - a.tieBreak[i];
-      }
+      if (a.tieBreak[i] !== b.tieBreak[i]) return b.tieBreak[i] - a.tieBreak[i];
     }
-    return 0;
+
+    // final stable tiebreaker (deterministic)
+    return String(a.product.id).localeCompare(String(b.product.id));
   });
 
   return scored.slice(0, 3).map(({ product, score, percent, reasons }) => ({
@@ -152,52 +208,75 @@ function computeTieBreakScore(
 
   return tieFields.map(({ questionId, kind }) => {
     if (!questionId) return 0;
+
     const answer = answers[questionId];
     if (!answer || isNoPreference(answer)) return 0;
 
     switch (kind) {
       case "brand":
         return normalizeMatches(product.brand, answer) ? 1 : 0;
+
       case "warranty": {
-        const warrantyMonths = product.specs?.warranty_months ?? product.warranty_text;
+        // Best effort: if your question answers are like "12 months" this works.
+        // If answers are "Very important" then warranty shouldn't be a tie-breaker anyway.
+        const warrantyMonths = (product.specs as any)?.warranty_months ?? product.warranty_text;
         return normalizeMatches(warrantyMonths, answer) ? 1 : 0;
       }
+
       case "performance": {
-        const perf = product.specs?.performance_tier ?? product.specs?.performance;
+        // If your performance question options are strings like "Heavy use (gaming, multitasking)"
+        // you probably want to store a matching string in specs.performance_tier or specs.performance_label.
+        const perf = (product.specs as any)?.performance_tier ?? (product.specs as any)?.performance;
         return normalizeMatches(perf, answer) ? 1 : 0;
       }
+
       default:
         return 0;
     }
   });
 }
 
+/**
+ * Converts quiz_questions rows into a WeightedQuestionRule.
+ * Supports:
+ * - Modern WeightingRule format (already has type + field)
+ * - Legacy format: {"price_band": 0.25}
+ */
 export function buildRuleFromQuestion(question: QuizQuestion): WeightedQuestionRule {
   const weightings = (question.weightings ?? {}) as LegacyWeightings | WeightingRule;
+
+  // Modern rule stored in DB
   if (isModernRule(weightings)) {
     return { questionId: question.id, questionText: question.question, rule: weightings };
   }
 
+  // Legacy: {"some_field": 0.25}
   const legacy = weightings as LegacyWeightings;
-  const [field, legacyWeight] = Object.entries(legacy)[0] ?? ["", 0];
-  const weight = 1;
+  const [field, legacyWeightRaw] = Object.entries(legacy)[0] ?? ["", 0];
+  const legacyWeight = Number(legacyWeightRaw || 0);
+
+  const options = safeOptionsArray(question.options);
+
   const pointsByOption: Record<string, number> = {};
   const reasonsByOption: Record<string, string> = {};
 
-  (question.options ?? []).forEach((opt) => {
+  for (const opt of options) {
     if (isNoPreference(opt)) {
       pointsByOption[opt] = 0;
-    } else {
-      const points = Math.round(100 * legacyWeight);
-      pointsByOption[opt] = points;
-      reasonsByOption[opt] = buildLegacyReason(question.question, opt);
+      continue;
     }
-  });
+
+    // Example: 0.25 -> 25 points, deterministic
+    const points = Math.round(100 * legacyWeight);
+    pointsByOption[opt] = points;
+
+    reasonsByOption[opt] = buildLegacyReason(question.question, opt);
+  }
 
   const rule: FieldEqualsRule = {
     type: "field_equals",
     field,
-    weight,
+    weight: 1,
     pointsByOption,
     reasonsByOption,
   };
