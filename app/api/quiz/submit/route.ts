@@ -16,6 +16,8 @@ type UtmPayload = {
   content?: string;
 };
 
+const REQUIRE_AFFILIATE_LINK = false; // ✅ Step 10.4 toggle (set true when ready)
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -55,12 +57,12 @@ export async function POST(req: Request) {
 
     const answers = normalizeAnswers(rawAnswers);
 
-    // ✅ Fetch products
+    // ✅ Fetch products (already includes is_active = true)
     const { data: products, error: prodErr } = await supabaseServer
       .from("products")
       .select("id, brand, model, price_hint, affiliate_links, warranty_text, specs, category")
       .eq("category", category)
-      .eq("is_active", true)
+      .eq("is_active", true) // ✅ Step 10.4 guardrail A
       .order("brand", { ascending: true })
       .order("model", { ascending: true });
 
@@ -77,45 +79,96 @@ export async function POST(req: Request) {
     if (qErr) throw new Error(qErr.message);
 
     const typedQuestions = (questions ?? []) as unknown as QuizQuestion[];
-    const typedProducts = (products ?? []) as unknown as RecoProduct[];
+    const typedProductsAll = (products ?? []) as unknown as RecoProduct[];
 
     if (typedQuestions.length === 0) {
       return new NextResponse("No active questions for this category", { status: 400 });
     }
-    if (typedProducts.length === 0) {
+    if (typedProductsAll.length === 0) {
       return new NextResponse("No active products for this category", { status: 400 });
+    }
+
+    /** ---------------------------------------
+     * ✅ Step 10.4 — Data quality guardrails
+     * -------------------------------------- */
+
+    // B) Optionally require at least 1 affiliate link
+    const { qualifiedProducts, qualityNotes } = applyDataQualityGuardrails(
+      typedProductsAll,
+      { requireAffiliateLink: REQUIRE_AFFILIATE_LINK }
+    );
+
+    if (qualifiedProducts.length === 0) {
+      // Don’t recommend anything if everything is dead
+      return new NextResponse(
+        REQUIRE_AFFILIATE_LINK
+          ? "No products with affiliate links are available right now"
+          : "No qualifying products are available right now",
+        { status: 400 }
+      );
     }
 
     // ✅ Build rules + config
     const rules = typedQuestions.map((q) => buildRuleFromQuestion(q));
     const config: RecommendConfig = detectTieBreakerConfig(typedQuestions);
 
-    // ✅ Score and select top 3
-    const scoredTop3: Recommendation[] = recommendTopProducts(
-      typedProducts,
+    // ✅ Score and select top N (N = min(3, qualified count))
+    const desiredCount = Math.min(3, qualifiedProducts.length);
+
+    // recommendTopProducts currently returns top 3; we slice after
+    const scored: Recommendation[] = recommendTopProducts(
+      qualifiedProducts,
       answers,
       rules,
       config
     );
 
-    const bestPercent = scoredTop3[0]?.percent ?? null;
+    const scoredTop = scored.slice(0, desiredCount);
+
+    // C) If fewer than 3 qualify → show fewer and say why
+    if (desiredCount < 3) {
+      qualityNotes.push(
+        `Only ${desiredCount} product${desiredCount === 1 ? "" : "s"} qualified, so we’re showing fewer recommendations.`
+      );
+    }
+
+    const bestPercent = scoredTop[0]?.percent ?? null;
 
     // ✅ Persist submission
+    // Recommended: add a column quiz_submissions.quality_notes (text[]) OR meta (jsonb)
+    // If you don't want a migration right now, you can omit this field safely.
+    const insertPayload: any = {
+      category,
+      answers,
+      top_3: scoredTop,
+      score_percent: bestPercent,
+      utm,
+      email,
+      first_name,
+      quality_notes: qualityNotes.length ? qualityNotes : null, // ⚠️ requires DB column
+    };
+
     const { data: submission, error: subErr } = await supabaseServer
       .from("quiz_submissions")
-      .insert({
-        category,
-        answers,
-        top_3: scoredTop3,
-        score_percent: bestPercent,
-        utm,
-        email,
-        first_name,
-      })
+      .insert(insertPayload)
       .select("id")
       .single();
 
-    if (subErr) throw new Error(subErr.message);
+    if (subErr) {
+      // If you haven't added the column yet, Supabase will error.
+      // Quick fallback: retry insert without quality_notes.
+      if ((subErr.message || "").toLowerCase().includes("quality_notes")) {
+        delete insertPayload.quality_notes;
+        const { data: retry, error: retryErr } = await supabaseServer
+          .from("quiz_submissions")
+          .insert(insertPayload)
+          .select("id")
+          .single();
+        if (retryErr) throw new Error(retryErr.message);
+        return NextResponse.json({ submissionId: retry.id });
+      }
+      throw new Error(subErr.message);
+    }
 
     return NextResponse.json({ submissionId: submission.id });
   } catch (err: unknown) {
@@ -141,7 +194,6 @@ function detectTieBreakerConfig(questions: QuizQuestion[]): RecommendConfig {
     brandQuestionId: findQuestionIdByInference(questions, "brand"),
     warrantyQuestionId: findQuestionIdByInference(questions, "warranty"),
     performanceQuestionId: findQuestionIdByInference(questions, "performance"),
-    // Keep only if RecommendConfig supports it
     noPreferenceValues: [null, "", "No preference", "no preference", "no_preference", "none"],
   } as RecommendConfig;
 }
@@ -193,4 +245,35 @@ function safeOptionsArray(options: unknown): string[] {
   }
 
   return [];
+}
+
+/** ---------------------------------------
+ * ✅ Step 10.4 guardrails implementation
+ * -------------------------------------- */
+
+function applyDataQualityGuardrails(
+  products: RecoProduct[],
+  opts: { requireAffiliateLink: boolean }
+): { qualifiedProducts: RecoProduct[]; qualityNotes: string[] } {
+  const qualityNotes: string[] = [];
+
+  let qualified = products;
+
+  if (opts.requireAffiliateLink) {
+    const before = qualified.length;
+    qualified = qualified.filter((p: any) => hasAtLeastOneAffiliateLink(p?.affiliate_links));
+    const removed = before - qualified.length;
+    if (removed > 0) {
+      qualityNotes.push(`${removed} product${removed === 1 ? "" : "s"} removed due to missing affiliate links.`);
+    }
+  }
+
+  return { qualifiedProducts: qualified, qualityNotes };
+}
+
+function hasAtLeastOneAffiliateLink(affiliateLinks: unknown): boolean {
+  if (!affiliateLinks || typeof affiliateLinks !== "object") return false;
+  return Object.values(affiliateLinks as Record<string, unknown>).some(
+    (v) => typeof v === "string" && v.trim().length > 0
+  );
 }

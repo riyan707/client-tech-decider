@@ -85,59 +85,72 @@ export default async function AdminDashboardPage() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
 
-  return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Admin</h1>
-
-        <div style={{ display: 'flex', gap: 12 }}>
-          <Link href="/admin/products">Products</Link>
-          <Link href="/admin/questions">Questions</Link>
-        </div>
+    return (
+    <div className="space-y-6">
+      {/* Top stats cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Total products" value={totalProducts ?? 0} sub="+0% this month" />
+        <StatCard title="Active products" value={activeProducts ?? 0} sub="Live in catalogue" />
+        <StatCard title="Submissions (7d)" value={sub7 ?? 0} sub="Last 7 days" />
+        <StatCard title="Submissions (30d)" value={sub30 ?? 0} sub="Last 30 days" />
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginTop: 16 }}>
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 12, color: '#6b7280' }}>Total products</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{totalProducts ?? 0}</div>
-        </div>
-
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 12, color: '#6b7280' }}>Active products</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{activeProducts ?? 0}</div>
-        </div>
-
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 12, color: '#6b7280' }}>Submissions (7d)</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{sub7 ?? 0}</div>
-        </div>
-
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 12, color: '#6b7280' }}>Submissions (30d)</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{sub30 ?? 0}</div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 18, border: '1px solid #e5e7eb', borderRadius: 10, padding: 14 }}>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>Top recommended products (last 500 submissions)</div>
-
-        {topRecommended.length === 0 ? (
-          <div style={{ color: '#6b7280' }}>No submission data yet.</div>
-        ) : (
-          <div style={{ display: 'grid', gap: 8 }}>
-            {topRecommended.map(([name, c]) => (
-              <div key={name} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div>{name}</div>
-                <div style={{ fontWeight: 700 }}>{c}</div>
-              </div>
-            ))}
+    
+      {/* Lower grid like the screenshot (left chart area placeholder, right activity list) */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 rounded-2xl border bg-white p-5">
+          <div className="mb-1 text-sm font-semibold text-neutral-900">Weekly Overview</div>
+          <div className="text-xs text-neutral-500">Sales performance for this week (placeholder)</div>
+    
+          <div className="mt-4 flex h-64 items-center justify-center rounded-xl border border-dashed text-sm text-neutral-500">
+            Chart placeholder (add Recharts later)
           </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: 12, color: '#6b7280', fontSize: 12 }}>
-        Note: “Top recommended” counts occurrences inside top_3 across recent submissions.
+        </div>
+    
+        <div className="rounded-2xl border bg-white p-5">
+          <div className="mb-1 text-sm font-semibold text-neutral-900">Top recommended</div>
+          <div className="text-xs text-neutral-500">Last 500 submissions</div>
+    
+          <div className="mt-4 space-y-3">
+            {topRecommended.length === 0 ? (
+              <div className="text-sm text-neutral-500">No submission data yet.</div>
+            ) : (
+              topRecommended.map(([name, c]) => (
+                <div key={name} className="flex items-center justify-between">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm text-neutral-800">{name}</div>
+                  </div>
+                  <div className="rounded-lg bg-neutral-100 px-2 py-1 text-sm font-semibold text-neutral-900">
+                    {c}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          
+          <div className="mt-4 text-xs text-neutral-400">
+            Note: counts occurrences inside top_3 across recent submissions.
+          </div>
+        </div>
       </div>
     </div>
-  )
+  );
+  
+  function StatCard({
+    title,
+    value,
+    sub,
+  }: {
+    title: string;
+    value: number;
+    sub?: string;
+  }) {
+    return (
+      <div className="rounded-2xl border bg-white p-5">
+        <div className="text-xs text-neutral-500">{title}</div>
+        <div className="mt-2 text-2xl font-semibold text-neutral-900">{value}</div>
+        {sub ? <div className="mt-1 text-xs text-neutral-500">{sub}</div> : null}
+      </div>
+    );
+  }
+  
 }
