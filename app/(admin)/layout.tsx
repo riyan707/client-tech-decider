@@ -1,4 +1,4 @@
-// app/admin/layout.tsx
+// app/(admin)/layout.tsx
 import Link from "next/link";
 
 const nav = [

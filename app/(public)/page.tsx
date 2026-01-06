@@ -1,8 +1,7 @@
-// app/page.tsx
+// app/(public)/page.tsx
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FloatingQuizCTA } from "@/components/FloatingQuizCta";
 import { HowItWorks } from "@/components/HowItWorks";
 
 const USE_CASES = [
@@ -15,8 +14,6 @@ const USE_CASES = [
 export default function HomePage() {
   return (
     <div className="min-h-screen">
-      <FloatingQuizCTA />
-
       {/* HERO */}
       <section className="mx-auto max-w-5xl px-6 pt-20 pb-10 text-center">
         <p className="text-sm text-muted-foreground">Tech Decider</p>
