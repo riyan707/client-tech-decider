@@ -3,16 +3,23 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+import { ProductCard, type ProductCardData } from "@/components/product/ProductCard";
+
+type Category = "smartphones" | "tvs" | "all";
+
 type SearchParams = {
-  category?: "smartphones" | "tvs";
+  category?: Category;
   q?: string;
+  brand?: string;
 };
 
-function getRetailers(affiliateLinks: any): Array<{ key: string; url: string }> {
-  if (!affiliateLinks || typeof affiliateLinks !== "object" || Array.isArray(affiliateLinks)) return [];
-  return Object.entries(affiliateLinks)
-    .filter(([, v]) => typeof v === "string" && v.length > 5)
-    .map(([k, v]) => ({ key: k, url: v as string }));
+function buildQueryString(params: Record<string, string | undefined>) {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v && v.trim().length) sp.set(k, v);
+  });
+  const s = sp.toString();
+  return s ? `?${s}` : "";
 }
 
 export default async function CataloguePage({
@@ -21,115 +28,237 @@ export default async function CataloguePage({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
-  const category = sp.category ?? "tvs";
+
+  const category: Category = sp.category ?? "all";
   const q = (sp.q ?? "").trim();
+  const brand = (sp.brand ?? "").trim();
 
   const supabase = await createSupabaseServerClient();
 
+  // -------------------------
+  // Sidebar brands (respect category unless "all")
+  // -------------------------
+  let brandsQuery = supabase
+    .from("products")
+    .select("brand")
+    .eq("is_active", true);
+
+  if (category !== "all") {
+    brandsQuery = brandsQuery.eq("category", category);
+  }
+
+  const { data: brandRows, error: brandErr } = await brandsQuery;
+  if (brandErr) throw new Error(brandErr.message);
+
+  const brands = Array.from(
+    new Set((brandRows ?? []).map((r: any) => (r.brand ?? "").trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
+  // -------------------------
+  // Products query
+  // -------------------------
   let query = supabase
     .from("products")
-    .select("id, category, brand, model, price_hint, affiliate_links")
+    .select("id, category, brand, model, price_hint, affiliate_links, image_url")
     .eq("is_active", true)
-    .eq("category", category)
     .order("updated_at", { ascending: false });
 
+  if (category !== "all") query = query.eq("category", category);
+  if (brand) query = query.eq("brand", brand);
   if (q) query = query.or(`brand.ilike.%${q}%,model.ilike.%${q}%`);
 
   const { data: products, error } = await query;
   if (error) throw new Error(error.message);
 
+  // Filters count: only count filters that are actually narrowing
+  const activeFiltersCount = (category !== "all" ? 1 : 0) + (brand ? 1 : 0) + (q ? 1 : 0);
+
+  // Map DB rows -> shared component type
+  const cardProducts: ProductCardData[] = (products ?? []).map((p: any) => ({
+    id: p.id,
+    category: p.category, // "tvs" | "smartphones"
+    brand: p.brand,
+    model: p.model,
+    price_hint: p.price_hint,
+    image_url: p.image_url,
+    affiliate_links: p.affiliate_links,
+  }));
+
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-6xl px-6 pt-16 pb-10">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Catalogue</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Browse active products. Use the quiz for best matches.
-            </p>
-          </div>
-
-          <div className="flex gap-2">
-            <Button asChild variant={category === "tvs" ? "default" : "outline"} className="rounded-full">
-              <Link href={`/catalogue?category=tvs${q ? `&q=${encodeURIComponent(q)}` : ""}`}>TVs</Link>
-            </Button>
-            <Button
-              asChild
-              variant={category === "smartphones" ? "default" : "outline"}
-              className="rounded-full"
-            >
-              <Link href={`/catalogue?category=smartphones${q ? `&q=${encodeURIComponent(q)}` : ""}`}>
-                Phones
-              </Link>
-            </Button>
-          </div>
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-semibold tracking-tight">Catalogue</h1>
+          <p className="text-sm text-muted-foreground">
+            Browse active products. Filters update results instantly.
+          </p>
         </div>
 
-        <form className="mt-6 flex gap-2">
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Search brand or model…"
-            className="w-full max-w-md rounded-md border bg-background px-4 py-2 text-sm"
-          />
-          <input type="hidden" name="category" value={category} />
-          <Button type="submit" variant="secondary">Search</Button>
-        </form>
+        <div className="mt-8 grid gap-6 lg:grid-cols-[280px_1fr]">
+          {/* SIDEBAR */}
+          <aside className="h-fit rounded-xl border p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Filters</div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {(products ?? []).map((p) => {
-            const retailers = getRetailers(p.affiliate_links);
-            return (
-              <div key={p.id} className="rounded-xl border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm text-muted-foreground">{p.brand}</div>
-                    <div className="text-lg font-semibold leading-tight">{p.model}</div>
+              <Link
+                className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                href={buildQueryString({ category: "all", brand: "", q: "" })}
+                title="Clear all filters"
+              >
+                Clear
+              </Link>
+            </div>
+
+            <div className="mt-4 space-y-5">
+              {/* SEARCH */}
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">Search</div>
+
+                <form className="mt-2 flex gap-2">
+                  <input type="hidden" name="category" value={category} />
+                  <input type="hidden" name="brand" value={brand} />
+
+                  <input
+                    name="q"
+                    defaultValue={q}
+                    placeholder="Brand or model…"
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  />
+                  <Button type="submit" variant="secondary">
+                    Go
+                  </Button>
+                </form>
+
+                {q && (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Searching: <span className="text-foreground">{q}</span>
                   </div>
-                  <Badge variant="secondary" className="rounded-full">
-                    {p.category === "tvs" ? "TV" : "Phone"}
-                  </Badge>
-                </div>
+                )}
+              </div>
 
-                <div className="mt-3 text-sm text-muted-foreground">
-                  {p.price_hint ? `From ${p.price_hint}` : "Price varies by retailer"}
-                </div>
-
-                {/* Placeholder use-case tags (optional now, real later) */}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Badge variant="outline" className="rounded-full">Gaming</Badge>
-                  <Badge variant="outline" className="rounded-full">Movies</Badge>
-                </div>
-
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <Button asChild variant="outline" size="sm">
-                    <Link href="/quiz">Take the quiz</Link>
+              {/* Product type */}
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">Product type</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    asChild
+                    size="sm"
+                    variant={category === "all" ? "default" : "outline"}
+                    className="rounded-full"
+                  >
+                    <Link href={buildQueryString({ category: "all", brand: "", q })}>
+                      Any
+                    </Link>
                   </Button>
 
-                  {retailers.slice(0, 2).map((r) => (
-                    <Button key={r.key} asChild size="sm">
-                      <a href={`/r/${p.id}/${r.key}`} target="_blank" rel="noreferrer">
-                        Buy ({r.key})
-                      </a>
-                    </Button>
-                  ))}
+                  <Button
+                    asChild
+                    size="sm"
+                    variant={category === "tvs" ? "default" : "outline"}
+                    className="rounded-full"
+                  >
+                    <Link href={buildQueryString({ category: "tvs", brand: "", q })}>
+                      TVs
+                    </Link>
+                  </Button>
 
-                  {retailers.length === 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      No affiliate links yet
-                    </span>
+                  <Button
+                    asChild
+                    size="sm"
+                    variant={category === "smartphones" ? "default" : "outline"}
+                    className="rounded-full"
+                  >
+                    <Link href={buildQueryString({ category: "smartphones", brand: "", q })}>
+                      Phones
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Brand */}
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">Brand</div>
+
+                <form className="mt-2">
+                  <input type="hidden" name="category" value={category} />
+                  <input type="hidden" name="q" value={q} />
+
+                  <select
+                    name="brand"
+                    defaultValue={brand}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">All brands</option>
+                    {brands.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+
+                  <Button type="submit" variant="secondary" className="mt-2 w-full">
+                    Apply
+                  </Button>
+                </form>
+              </div>
+
+              {/* Active filters indicator */}
+              <div className="rounded-lg bg-muted/30 p-3 text-xs text-muted-foreground">
+                Active filters:{" "}
+                <span className="text-foreground font-medium">{activeFiltersCount}</span>
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {category !== "all" && (
+                    <Badge variant="secondary" className="rounded-full">
+                      {category === "tvs" ? "TVs" : "Phones"}
+                    </Badge>
+                  )}
+
+                  {brand && (
+                    <Badge variant="secondary" className="rounded-full">
+                      {brand}
+                    </Badge>
+                  )}
+
+                  {q && (
+                    <Badge variant="secondary" className="rounded-full">
+                      “{q}”
+                    </Badge>
+                  )}
+
+                  {activeFiltersCount === 0 && (
+                    <Badge variant="secondary" className="rounded-full">
+                      No filters
+                    </Badge>
                   )}
                 </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          </aside>
 
-        {(products?.length ?? 0) === 0 && (
-          <div className="mt-10 rounded-xl border p-6 text-sm text-muted-foreground">
-            No products in this category yet. The catalogue is expanding — use the quiz for best available matches.
-          </div>
-        )}
+          {/* RESULTS */}
+          <section>
+            <div className="mb-5 flex items-end justify-between">
+              <div className="text-sm text-muted-foreground">
+                Showing{" "}
+                <span className="text-foreground font-medium">{cardProducts.length}</span>{" "}
+                results
+              </div>
+            </div>
+
+            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+              {cardProducts.map((p) => (
+                <ProductCard key={p.id} product={p} variant="catalogue" />
+              ))}
+            </div>
+
+            {cardProducts.length === 0 && (
+              <div className="mt-10 rounded-xl border p-6 text-sm text-muted-foreground">
+                No products match those filters yet. Try clearing brand/search.
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );
