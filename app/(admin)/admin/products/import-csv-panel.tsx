@@ -40,9 +40,9 @@ export function ImportCsvPanel() {
 
   function downloadTemplate() {
     const csv =
-      "category,brand,model,price_hint,image_url,is_active,affiliate_links\n" +
-      'tvs,LG,C3,"From £999",https://example.com/c3.jpg,true,"{""amazon"":""https://amzn.to/xxxx""}"\n' +
-      'smartphones,Apple,iPhone 15 Pro,"From £899",,true,"{}"\n';
+      "category,brand,model,price_hint,image_url,is_active,affiliate_links,warranty_text,specs\n" +
+      'tvs,LG,C3,"From £999",https://example.com/c3.jpg,true,"{""amazon"":""https://amzn.to/xxxx""}","2 year warranty","{""screen_size"":""55"",""panel"":""OLED"",""refresh_rate_hz"":120}"\n' +
+      'smartphones,Apple,iPhone 15 Pro,"From £899",,true,"{}","","{""storage"":""256GB"",""color"":""black""}"\n';
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -63,21 +63,41 @@ export function ImportCsvPanel() {
     setErrorMsg(null);
     setResult(null);
 
-    const res = await fetch("/api/admin/products/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows }),
-    });
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 45000); // 45s hard stop
 
-    const json = await res.json();
-    setLoading(false);
+    try {
+      const res = await fetch("/api/admin/products/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+        signal: controller.signal,
+      });
 
-    if (!res.ok) {
-      setErrorMsg(json?.error || "Import failed.");
-      return;
+      clearTimeout(t);
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setLoading(false);
+            
+        const debug =
+          (json?.error ? `${json.error}\n` : "Import failed.\n") +
+          (json?.firstRowKeys ? `firstRowKeys: ${JSON.stringify(json.firstRowKeys)}\n` : "") +
+          (json?.errors?.length ? `errors(sample): ${JSON.stringify(json.errors.slice(0, 5), null, 2)}` : "");
+            
+        setErrorMsg(debug || "Import failed.");
+        return;
+      }
+
+
+      setLoading(false);
+      setResult(json);
+    } catch (e: any) {
+      clearTimeout(t);
+      setLoading(false);
+      setErrorMsg(e?.name === "AbortError" ? "Import timed out (45s)." : (e?.message || "Import failed."));
     }
-
-    setResult(json);
   }
 
   return (
@@ -90,7 +110,6 @@ export function ImportCsvPanel() {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Prominent upload block */}
         <div className="rounded-2xl border p-4 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -120,9 +139,7 @@ export function ImportCsvPanel() {
               {fileName ? (
                 <>
                   Selected: <span className="text-foreground font-medium">{fileName}</span>
-                  <span className="ml-2 text-xs">
-                    ({rows.length ? `${rows.length} rows parsed` : "parsing..."})
-                  </span>
+                  <span className="ml-2 text-xs">({rows.length ? `${rows.length} rows parsed` : "parsing..."})</span>
                 </>
               ) : (
                 "No file selected"
@@ -131,15 +148,19 @@ export function ImportCsvPanel() {
           </div>
 
           <div className="mt-4 rounded-xl bg-muted/30 p-3 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">Minimum columns:</span>{" "}
-            category, brand, model
+            <div>
+              <span className="font-medium text-foreground">Required:</span> category, brand, model
+            </div>
             <div className="mt-1 text-xs">
-              Optional: price_hint, image_url, is_active, affiliate_links (JSON)
+              <span className="font-medium text-foreground">category must be:</span> smartphones or tvs
+            </div>
+            <div className="mt-2 text-xs">
+              <span className="font-medium text-foreground">Optional:</span> price_hint, image_url, is_active,
+              affiliate_links (JSON), warranty_text, specs (JSON)
             </div>
           </div>
         </div>
 
-        {/* Preview */}
         {rows.length > 0 && (
           <div className="rounded-xl border p-4">
             <div className="flex items-center justify-between">
@@ -153,9 +174,7 @@ export function ImportCsvPanel() {
               {JSON.stringify(rows.slice(0, 3), null, 2)}
             </pre>
 
-            <div className="mt-2 text-xs text-muted-foreground">
-              Showing first 3 rows only.
-            </div>
+            <div className="mt-2 text-xs text-muted-foreground">Showing first 3 rows only.</div>
           </div>
         )}
 
@@ -169,9 +188,9 @@ export function ImportCsvPanel() {
           <div className="rounded-xl border p-4 text-sm">
             <div className="font-medium">Import complete</div>
             <div className="mt-2 text-muted-foreground">
-              Inserted: <span className="text-foreground">{result.inserted}</span>{" "}
-              • Updated: <span className="text-foreground">{result.updated}</span>{" "}
-              • Skipped: <span className="text-foreground">{result.skipped}</span>
+              Upserted: <span className="text-foreground">{result.upserted}</span>{" "}
+              • Errors: <span className="text-foreground">{result.errors?.length ?? 0}</span>{" "}
+              • Time: <span className="text-foreground">{result.ms}ms</span>
             </div>
 
             {result.errors?.length > 0 && (

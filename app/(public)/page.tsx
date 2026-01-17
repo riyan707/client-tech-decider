@@ -1,8 +1,7 @@
-// app/(public)/page.tsx
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { HowItWorks } from "@/components/HowItWorks";
 import {
@@ -13,33 +12,38 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { ProductCard, type ProductCardData } from "@/components/product/ProductCard";
+import {
+  ProductCard,
+  type ProductCardData,
+} from "@/components/product/ProductCard";
 
+// ✅ MUST match DB categories
 const CATEGORIES = [
   { key: "tvs", label: "TVs" },
-  { key: "phones", label: "Phones" },
+  { key: "smartphones", label: "Phones" },
 ] as const;
 
 type CategoryKey = (typeof CATEGORIES)[number]["key"];
 
+// ✅ MUST match DB use_cases.key values
 const USE_CASES_BY_CATEGORY = {
   tvs: [
-    { key: "gaming", label: "Gamers" },
-    { key: "movies", label: "Movie lovers" },
-    { key: "sports", label: "Sports fans" },
+    { key: "gamers", label: "Gamers" },
+    { key: "movie_lovers", label: "Movie lovers" },
+    { key: "sports_fans", label: "Sports fans" },
     { key: "family", label: "Family" },
   ],
-  phones: [
-    { key: "camera", label: "Content creators" },
-    { key: "battery", label: "Battery life" },
-    { key: "gaming", label: "Mobile gaming" },
-    { key: "budget", label: "Best value" },
+  smartphones: [
+    { key: "content_creators", label: "Content creators" },
+    { key: "battery_life", label: "Battery life" },
+    { key: "mobile_gaming", label: "Mobile gaming" },
+    { key: "best_value", label: "Best value" },
   ],
 } as const;
 
 type UseCaseKey =
   | (typeof USE_CASES_BY_CATEGORY.tvs)[number]["key"]
-  | (typeof USE_CASES_BY_CATEGORY.phones)[number]["key"];
+  | (typeof USE_CASES_BY_CATEGORY.smartphones)[number]["key"];
 
 function getCategoryLabel(key: CategoryKey) {
   return CATEGORIES.find((c) => c.key === key)?.label ?? "TVs";
@@ -56,20 +60,54 @@ function getUseCaseLabel(category: CategoryKey, useCase: UseCaseKey) {
 
 export default function HomePage() {
   const [category, setCategory] = useState<CategoryKey>("tvs");
-  const [useCase, setUseCase] = useState<UseCaseKey>(getDefaultUseCase("tvs"));
+  const [useCase, setUseCase] = useState<UseCaseKey>(
+    getDefaultUseCase("tvs")
+  );
 
   const useCases = USE_CASES_BY_CATEGORY[category];
+
+  const [products, setProducts] = useState<ProductCardData[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const onCategoryChange = (next: CategoryKey) => {
     setCategory(next);
     setUseCase(getDefaultUseCase(next));
   };
 
-  // You can still keep this for analytics/logging later; not displayed in UI.
+  // (Optional) useful for analytics later
   const title = useMemo(() => {
     const catLabel = getCategoryLabel(category);
     const useLabel = getUseCaseLabel(category, useCase);
     return `Most popular ${catLabel} for ${useLabel}`;
+  }, [category, useCase]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `/api/featured-products?category=${encodeURIComponent(
+            category
+          )}&useCase=${encodeURIComponent(useCase)}`,
+          { cache: "no-store" }
+        );
+
+        const json = await res.json();
+
+        if (!cancelled) {
+          setProducts((json.data ?? []) as ProductCardData[]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [category, useCase]);
 
   return (
@@ -103,7 +141,7 @@ export default function HomePage() {
         </p>
       </section>
 
-      {/* FEATURED / TEASER AREA */}
+      {/* FEATURED / REAL DATA */}
       <section className="mx-auto max-w-5xl px-6 pb-16">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
@@ -120,7 +158,12 @@ export default function HomePage() {
               <InlineSelect
                 value={useCase}
                 onChange={(v) => setUseCase(v as UseCaseKey)}
-                items={useCases as unknown as ReadonlyArray<{ key: string; label: string }>}
+                items={
+                  useCases as unknown as ReadonlyArray<{
+                    key: string;
+                    label: string;
+                  }>
+                }
                 ariaLabel="Select use case"
                 display={getUseCaseLabel(category, useCase)}
               />
@@ -130,32 +173,40 @@ export default function HomePage() {
               Tap the underlined words to change options.
             </p>
           </div>
-
-          {/* Intentionally removed the debug title display */}
         </div>
 
-        {/* Product teaser grid (shared component, compact variant, no Buy button) */}
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => {
-            const teaser: ProductCardData = {
-              id: `teaser-${i}`,
-              category: category === "tvs" ? "tvs" : "smartphones",
-              brand: "Brand",
-              model: "Model name",
-              price_hint: null,
-              image_url: null,
-              affiliate_links: null,
-            };
-
-            return (
+          {loading ? (
+            Array.from({ length: 6 }).map((_, i) => (
               <ProductCard
-                key={teaser.id}
-                product={teaser}
+                key={`skeleton-${i}`}
+                product={{
+                  id: `skeleton-${i}`,
+                  category,
+                  brand: "Loading",
+                  model: "Loading",
+                  price_hint: null,
+                  image_url: null,
+                  affiliate_links: null,
+                }}
                 variant="compact"
                 showBuy={false}
               />
-            );
-          })}
+            ))
+          ) : products.length ? (
+            products.map((p) => (
+              <ProductCard
+                key={p.id}
+                product={p}
+                variant="compact"
+                showBuy={false}
+              />
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No products found for this selection yet.
+            </p>
+          )}
         </div>
 
         <p className="mt-6 text-sm text-muted-foreground">

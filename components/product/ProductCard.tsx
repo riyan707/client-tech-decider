@@ -70,22 +70,34 @@ export function ProductCard({
         aria-label={`View ${product.brand} ${product.model}`}
       />
 
-      {/* Image */}
-      <div className={isCompact ? "aspect-[16/10] bg-muted/30" : "aspect-[4/3] bg-muted/30"}>
+      {/* Image (padded + centered + does NOT fill/crop) */}
+      <div
+        className={[
+          "relative overflow-hidden bg-muted/30",
+          "flex items-center justify-center",
+          isCompact ? "aspect-[16/10]" : "aspect-[4/3]",
+        ].join(" ")}
+      >
         {product.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={product.image_url}
-            alt={`${product.brand} ${product.model}`}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-            loading="lazy"
-          />
+          <div className="relative h-full w-full p-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={product.image_url}
+              alt={`${product.brand} ${product.model}`}
+              className={[
+                "h-full w-full object-contain",
+                "transition-transform duration-300 group-hover:scale-[1.02]",
+              ].join(" ")}
+              loading="lazy"
+            />
+          </div>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
             Image placeholder
           </div>
         )}
       </div>
+      
 
       {/* Content */}
       <div className={isCompact ? "p-4" : "p-5"}>
