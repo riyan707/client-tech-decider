@@ -113,7 +113,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen">
       {/* HERO */}
-      <section className="mx-auto max-w-5xl px-6 pt-20 pb-10 text-center">
+      <section className="mx-auto max-w-6xl px-6 pt-20 pb-10 text-center">
         <p className="text-sm text-muted-foreground">Tech Decider</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight md:text-5xl">
           Find the right device in 2 minutes.
@@ -142,7 +142,7 @@ export default function HomePage() {
       </section>
 
       {/* FEATURED / REAL DATA */}
-      <section className="mx-auto max-w-5xl px-6 pb-16">
+      <section className="mx-auto max-w-6xl px-6 pb-16">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
             <h2 className="text-xl font-semibold tracking-tight">

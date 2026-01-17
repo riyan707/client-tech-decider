@@ -49,21 +49,23 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur">
-      {/* Top bar */}
-      <div className="mx-auto flex h-12 max-w-6xl items-center justify-between px-6">
-        {/* Logo */}
-        <Link
-          href="/"
-          className={`text-sm font-semibold tracking-tight transition-opacity ${
-            open ? "opacity-60" : "opacity-100"
-          }`}
-        >
-          Tech Decider
-        </Link>
+      {/* Top bar (TRUE centered middle) */}
+      <div className="mx-auto grid h-12 max-w-6xl grid-cols-3 items-center px-6">
+        {/* Left: Logo */}
+        <div className="justify-self-start">
+          <Link
+            href="/"
+            className={`text-sm font-semibold tracking-tight transition-opacity ${
+              open ? "opacity-60" : "opacity-100"
+            }`}
+          >
+            Tech Decider
+          </Link>
+        </div>
 
-        {/* Minimal nav */}
+        {/* Center: Nav */}
         <nav
-          className={`hidden items-center gap-7 text-sm text-muted-foreground md:flex transition-opacity ${
+          className={`hidden justify-self-center items-center gap-7 text-sm text-muted-foreground md:flex transition-opacity ${
             open ? "opacity-40" : "opacity-100"
           }`}
         >
@@ -72,8 +74,8 @@ export function Navbar() {
           </Link>
         </nav>
 
-        {/* Right icons */}
-        <div className="flex items-center gap-1">
+        {/* Right: Icons */}
+        <div className="justify-self-end flex items-center gap-1">
           {!open ? (
             <button
               onClick={() => setOpen(true)}
