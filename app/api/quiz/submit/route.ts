@@ -8,6 +8,7 @@ import type {
   Recommendation,
 } from "@/lib/types";
 import { buildRuleFromQuestion, recommendTopProducts } from "@/lib/recommendation";
+import { sendResultsEmail } from "@/lib/email";
 
 type UtmPayload = {
   source?: string;
@@ -165,10 +166,15 @@ export async function POST(req: Request) {
           .select("id")
           .single();
         if (retryErr) throw new Error(retryErr.message);
+        // Fire results email async (don't block response)
+        sendResultsEmail({ to: email, firstName: first_name, category, picks: scoredTop, submissionId: retry.id }).catch(() => {});
         return NextResponse.json({ submissionId: retry.id });
       }
       throw new Error(subErr.message);
     }
+
+    // Fire results email async (don't block response)
+    sendResultsEmail({ to: email, firstName: first_name, category, picks: scoredTop, submissionId: submission.id }).catch(() => {});
 
     return NextResponse.json({ submissionId: submission.id });
   } catch (err: unknown) {
