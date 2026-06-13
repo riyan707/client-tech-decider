@@ -1,7 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { execSync } from 'child_process';
 
-const DB = 'postgresql://neondb_owner:npg_a1q2mnArLtHv@ep-late-sea-ab5fj0s7-pooler.eu-west-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+const DB = process.env.DATABASE_URL;
 const sql = neon(DB);
 
 // Map product DB id → RTINGS review slug

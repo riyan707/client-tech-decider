@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# One-off scripts (keep local only)
+enrich-*.mjs
+fetch-*.mjs
+fetch-*.ts
+fetch-images.sh
+fetch-products.ts
