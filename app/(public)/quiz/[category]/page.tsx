@@ -4,7 +4,7 @@ import { quiz_questions } from "@/lib/db/schema";
 import { eq, and, asc } from "drizzle-orm";
 import QuizClient from "./quiz-client";
 import type { QuizCategory, QuizQuestion } from "@/lib/types";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 export default async function QuizPage({
   params,
@@ -15,6 +15,9 @@ export default async function QuizPage({
   const category = rawCategory as QuizCategory;
 
   if (category !== "smartphones" && category !== "tvs") return notFound();
+
+  // TVs use the new branching quiz
+  if (category === "tvs") redirect("/quiz/tv");
 
   const rows = await db
     .select({

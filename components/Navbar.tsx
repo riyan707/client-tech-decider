@@ -72,6 +72,9 @@ export function Navbar() {
           <Link href="/catalogue" className="hover:text-foreground">
             Catalogue
           </Link>
+          <Link href="/blog" className="hover:text-foreground">
+            Guides
+          </Link>
         </nav>
 
         {/* Right: Icons */}
