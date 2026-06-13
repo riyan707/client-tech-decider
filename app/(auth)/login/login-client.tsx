@@ -1,9 +1,8 @@
-// app/(auth)/login/login-client.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,16 +14,13 @@ export default function LoginClient() {
   const sp = useSearchParams();
   const next = sp.get("next") || "/admin";
 
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  async function signIn() {
+  async function handleSignIn() {
     const e = email.trim().toLowerCase();
 
     if (!e || !password) {
@@ -35,20 +31,20 @@ export default function LoginClient() {
     setErrorMsg(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const res = await signIn("credentials", {
       email: e,
       password,
+      redirect: false,
     });
 
     setLoading(false);
 
-    if (error) {
-      setErrorMsg(error.message);
-      return;
+    if (res?.ok) {
+      router.push(next);
+      router.refresh();
+    } else {
+      setErrorMsg("Invalid email or password");
     }
-
-    router.push(next);
-    router.refresh();
   }
 
   return (
@@ -68,7 +64,7 @@ export default function LoginClient() {
               className="space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                signIn();
+                handleSignIn();
               }}
             >
               <div className="space-y-2">
@@ -120,7 +116,7 @@ export default function LoginClient() {
               </Button>
 
               <p className="text-xs text-muted-foreground">
-                Tip: If you were redirected here, you’ll be sent back after login.
+                Tip: If you were redirected here, you&apos;ll be sent back after login.
               </p>
             </form>
           </CardContent>

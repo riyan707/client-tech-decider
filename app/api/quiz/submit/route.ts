@@ -1,5 +1,8 @@
+export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
-import { supabaseServer } from "@/app/utils/supabase/server";
+import { db } from "@/lib/db";
+import { products, quiz_questions, quiz_submissions } from "@/lib/db/schema";
+import { eq, and, asc } from "drizzle-orm";
 import type {
   QuizCategory,
   QuizQuestion,
@@ -17,7 +20,7 @@ type UtmPayload = {
   content?: string;
 };
 
-const REQUIRE_AFFILIATE_LINK = false; // ✅ Step 10.4 toggle (set true when ready)
+const REQUIRE_AFFILIATE_LINK = false;
 
 export async function POST(req: Request) {
   try {
@@ -26,11 +29,9 @@ export async function POST(req: Request) {
     const category = body.category as QuizCategory;
     const rawAnswers = body.answers as Record<string, unknown>;
 
-    // ✅ Lead fields (required)
     const email = typeof body.email === "string" ? body.email.trim() : "";
     const first_name = typeof body.first_name === "string" ? body.first_name.trim() : "";
 
-    // ✅ Optional UTM (sanitised)
     const utm: UtmPayload | null =
       body.utm && typeof body.utm === "object" && !Array.isArray(body.utm)
         ? {
@@ -41,7 +42,6 @@ export async function POST(req: Request) {
           }
         : null;
 
-    // ✅ Validate category + answers
     if (category !== "smartphones" && category !== "tvs") {
       return new NextResponse("Invalid category", { status: 400 });
     }
@@ -49,38 +49,51 @@ export async function POST(req: Request) {
       return new NextResponse("Invalid answers", { status: 400 });
     }
 
-    // ✅ Require identity (target quiz)
-    if (!first_name) return new NextResponse("First name required", { status: 400 });
-    if (!email) return new NextResponse("Email required", { status: 400 });
+    // Email and first name are optional — use sensible fallbacks
+    const safeName = first_name || "Friend";
+    const safeEmail = email || "anonymous@techdecider.com";
 
-    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (!emailOk) return new NextResponse("Invalid email", { status: 400 });
+    if (email) {
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!emailOk) return new NextResponse("Invalid email", { status: 400 });
+    }
 
     const answers = normalizeAnswers(rawAnswers);
 
-    // ✅ Fetch products (already includes is_active = true)
-    const { data: products, error: prodErr } = await supabaseServer
-      .from("products")
-      .select("id, brand, model, price_hint, affiliate_links, warranty_text, specs, category")
-      .eq("category", category)
-      .eq("is_active", true) // ✅ Step 10.4 guardrail A
-      .order("brand", { ascending: true })
-      .order("model", { ascending: true });
+    // Fetch products
+    const productRows = await db
+      .select({
+        id: products.id,
+        brand: products.brand,
+        model: products.model,
+        price_hint: products.price_hint,
+        image_url: products.image_url,
+        affiliate_links: products.affiliate_links,
+        warranty_text: products.warranty_text,
+        specs: products.specs,
+        category: products.category,
+      })
+      .from(products)
+      .where(and(eq(products.category, category), eq(products.is_active, true)))
+      .orderBy(asc(products.brand), asc(products.model));
 
-    if (prodErr) throw new Error(prodErr.message);
+    // Fetch questions
+    const questionRows = await db
+      .select({
+        id: quiz_questions.id,
+        category: quiz_questions.category,
+        question: quiz_questions.question,
+        type: quiz_questions.type,
+        options: quiz_questions.options,
+        weightings: quiz_questions.weightings,
+        order: quiz_questions.order,
+      })
+      .from(quiz_questions)
+      .where(and(eq(quiz_questions.category, category), eq(quiz_questions.is_active, true)))
+      .orderBy(asc(quiz_questions.order));
 
-    // ✅ Fetch questions
-    const { data: questions, error: qErr } = await supabaseServer
-      .from("quiz_questions")
-      .select("id, category, question, type, options, weightings, order")
-      .eq("category", category)
-      .eq("is_active", true)
-      .order("order", { ascending: true });
-
-    if (qErr) throw new Error(qErr.message);
-
-    const typedQuestions = (questions ?? []) as unknown as QuizQuestion[];
-    const typedProductsAll = (products ?? []) as unknown as RecoProduct[];
+    const typedQuestions = questionRows as unknown as QuizQuestion[];
+    const typedProductsAll = productRows as unknown as RecoProduct[];
 
     if (typedQuestions.length === 0) {
       return new NextResponse("No active questions for this category", { status: 400 });
@@ -89,18 +102,12 @@ export async function POST(req: Request) {
       return new NextResponse("No active products for this category", { status: 400 });
     }
 
-    /** ---------------------------------------
-     * ✅ Step 10.4 — Data quality guardrails
-     * -------------------------------------- */
-
-    // B) Optionally require at least 1 affiliate link
     const { qualifiedProducts, qualityNotes } = applyDataQualityGuardrails(
       typedProductsAll,
       { requireAffiliateLink: REQUIRE_AFFILIATE_LINK }
     );
 
     if (qualifiedProducts.length === 0) {
-      // Don’t recommend anything if everything is dead
       return new NextResponse(
         REQUIRE_AFFILIATE_LINK
           ? "No products with affiliate links are available right now"
@@ -109,14 +116,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Build rules + config
     const rules = typedQuestions.map((q) => buildRuleFromQuestion(q));
     const config: RecommendConfig = detectTieBreakerConfig(typedQuestions);
 
-    // ✅ Score and select top N (N = min(3, qualified count))
     const desiredCount = Math.min(3, qualifiedProducts.length);
 
-    // recommendTopProducts currently returns top 3; we slice after
     const scored: Recommendation[] = recommendTopProducts(
       qualifiedProducts,
       answers,
@@ -126,55 +130,38 @@ export async function POST(req: Request) {
 
     const scoredTop = scored.slice(0, desiredCount);
 
-    // C) If fewer than 3 qualify → show fewer and say why
     if (desiredCount < 3) {
       qualityNotes.push(
-        `Only ${desiredCount} product${desiredCount === 1 ? "" : "s"} qualified, so we’re showing fewer recommendations.`
+        `Only ${desiredCount} product${desiredCount === 1 ? "" : "s"} qualified, so we're showing fewer recommendations.`
       );
     }
 
     const bestPercent = scoredTop[0]?.percent ?? null;
 
-    // ✅ Persist submission
-    // Recommended: add a column quiz_submissions.quality_notes (text[]) OR meta (jsonb)
-    // If you don't want a migration right now, you can omit this field safely.
     const insertPayload: any = {
       category,
       answers,
       top_3: scoredTop,
       score_percent: bestPercent,
       utm,
-      email,
-      first_name,
-      quality_notes: qualityNotes.length ? qualityNotes : null, // ⚠️ requires DB column
+      email: safeEmail,
+      first_name: safeName,
+      quality_notes: qualityNotes.length ? qualityNotes : null,
     };
 
-    const { data: submission, error: subErr } = await supabaseServer
-      .from("quiz_submissions")
-      .insert(insertPayload)
-      .select("id")
-      .single();
+    const [submission] = await db
+      .insert(quiz_submissions)
+      .values(insertPayload)
+      .returning({ id: quiz_submissions.id });
 
-    if (subErr) {
-      // If you haven't added the column yet, Supabase will error.
-      // Quick fallback: retry insert without quality_notes.
-      if ((subErr.message || "").toLowerCase().includes("quality_notes")) {
-        delete insertPayload.quality_notes;
-        const { data: retry, error: retryErr } = await supabaseServer
-          .from("quiz_submissions")
-          .insert(insertPayload)
-          .select("id")
-          .single();
-        if (retryErr) throw new Error(retryErr.message);
-        // Fire results email async (don't block response)
-        sendResultsEmail({ to: email, firstName: first_name, category, picks: scoredTop, submissionId: retry.id }).catch(() => {});
-        return NextResponse.json({ submissionId: retry.id });
-      }
-      throw new Error(subErr.message);
-    }
-
-    // Fire results email async (don't block response)
-    sendResultsEmail({ to: email, firstName: first_name, category, picks: scoredTop, submissionId: submission.id }).catch(() => {});
+    // Only send email if user actually provided one
+    if (email) sendResultsEmail({
+      to: safeEmail,
+      firstName: safeName,
+      category,
+      picks: scoredTop,
+      submissionId: submission.id,
+    }).catch(() => {});
 
     return NextResponse.json({ submissionId: submission.id });
   } catch (err: unknown) {
@@ -182,10 +169,6 @@ export async function POST(req: Request) {
     return new NextResponse(message, { status: 500 });
   }
 }
-
-/** ---------------------------
- *  Helpers
- *  -------------------------- */
 
 function normalizeAnswers(raw: Record<string, unknown>): Record<string, string> {
   return Object.entries(raw).reduce<Record<string, string>>((acc, [key, value]) => {
@@ -252,10 +235,6 @@ function safeOptionsArray(options: unknown): string[] {
 
   return [];
 }
-
-/** ---------------------------------------
- * ✅ Step 10.4 guardrails implementation
- * -------------------------------------- */
 
 function applyDataQualityGuardrails(
   products: RecoProduct[],

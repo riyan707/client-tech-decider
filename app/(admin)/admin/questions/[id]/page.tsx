@@ -1,5 +1,8 @@
-import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+export const dynamic = "force-dynamic";
+import { db } from "@/lib/db";
+import { quiz_questions } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 
 async function updateQuestionAction(formData: FormData) {
   'use server'
@@ -33,14 +36,10 @@ async function updateQuestionAction(formData: FormData) {
   if (!question) throw new Error('question is required')
   if (!Number.isFinite(order) || order < 1) throw new Error('order must be a number >= 1')
 
-  const supabase = await createSupabaseServerClient()
-
-  const { error } = await supabase
-    .from('quiz_questions')
-    .update({ question, options, weightings, order, is_active })
-    .eq('id', id)
-
-  if (error) throw new Error(error.message)
+  await db
+    .update(quiz_questions)
+    .set({ question, options, weightings, order, is_active })
+    .where(eq(quiz_questions.id, id))
 
   redirect('/admin/questions')
 }
@@ -50,16 +49,16 @@ export default async function EditQuestionPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const { id } = await params
-  const supabase = await createSupabaseServerClient()
+  const { id } = await params;
 
-  const { data: q, error } = await supabase
-    .from('quiz_questions')
-    .select('*')
-    .eq('id', id)
-    .single()
+  const rows = await db
+    .select()
+    .from(quiz_questions)
+    .where(eq(quiz_questions.id, id))
+    .limit(1);
 
-  if (error) throw new Error(error.message)
+  const q = rows[0];
+
   if (!q) throw new Error('Question not found')
 
   return (

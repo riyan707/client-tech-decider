@@ -113,7 +113,10 @@ function evaluateFieldEqualsRule(
   const productRecord = product as unknown as Record<string, unknown>;
   const productValue = product.specs?.[rule.field] ?? productRecord[rule.field];
 
-  const matches = normalizeMatches(productValue, answer);
+  // If product has no spec data for this field, treat as full match
+  // (absence of data ≠ bad product — only differentiate when data exists)
+  const hasProductData = productValue !== undefined && productValue !== null && productValue !== "";
+  const matches = hasProductData ? normalizeMatches(productValue, answer) : true;
   const score = matches ? maxPoints : 0;
 
   // reasonsByOption can be stored as string OR string[]

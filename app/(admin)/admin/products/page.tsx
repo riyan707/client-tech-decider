@@ -1,6 +1,9 @@
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { products } from "@/lib/db/schema";
+import { eq, and, or, ilike, desc, asc } from "drizzle-orm";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,10 +31,7 @@ async function toggleActiveAction(formData: FormData) {
   const id = String(formData.get("id"));
   const next = String(formData.get("next")) === "true";
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from("products").update({ is_active: next }).eq("id", id);
-
-  if (error) throw new Error(error.message);
+  await db.update(products).set({ is_active: next }).where(eq(products.id, id));
 
   revalidatePath("/admin/products");
 }
@@ -47,19 +47,30 @@ export default async function AdminProductsPage({
   const category = sp.category ?? "all";
   const active = sp.active ?? "all";
 
-  const supabase = await createSupabaseServerClient();
+  const conditions = [];
+  if (category !== "all") conditions.push(eq(products.category, category));
+  if (active !== "all") conditions.push(eq(products.is_active, active === "true"));
+  if (q) {
+    conditions.push(
+      or(
+        ilike(products.brand, `%${q}%`),
+        ilike(products.model, `%${q}%`)
+      )!
+    );
+  }
 
-  let query = supabase
-    .from("products")
-    .select("id, category, brand, model, is_active, updated_at")
-    .order("updated_at", { ascending: false });
-
-  if (category !== "all") query = query.eq("category", category);
-  if (active !== "all") query = query.eq("is_active", active === "true");
-  if (q) query = query.or(`brand.ilike.%${q}%,model.ilike.%${q}%`);
-
-  const { data: products, error } = await query;
-  if (error) throw new Error(error.message);
+  const productRows = await db
+    .select({
+      id: products.id,
+      category: products.category,
+      brand: products.brand,
+      model: products.model,
+      is_active: products.is_active,
+      updated_at: products.updated_at,
+    })
+    .from(products)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(products.updated_at));
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
@@ -131,7 +142,7 @@ export default async function AdminProductsPage({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">Results</CardTitle>
-            <div className="text-sm text-muted-foreground">{products?.length ?? 0} items</div>
+            <div className="text-sm text-muted-foreground">{productRows.length} items</div>
           </div>
         </CardHeader>
 
@@ -149,7 +160,7 @@ export default async function AdminProductsPage({
               </TableHeader>
 
               <TableBody>
-                {(products ?? []).map((p) => (
+                {productRows.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">{p.brand}</TableCell>
                     <TableCell>{p.model}</TableCell>
@@ -188,7 +199,7 @@ export default async function AdminProductsPage({
                   </TableRow>
                 ))}
 
-                {(products?.length ?? 0) === 0 && (
+                {productRows.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
                       No products found.

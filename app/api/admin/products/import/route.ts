@@ -1,6 +1,7 @@
-// app/api/admin/products/import/route.ts
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { products } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,12 +16,6 @@ function toBool(v: any, defaultVal = true) {
   return ["true", "1", "yes", "y", "on"].includes(s);
 }
 
-/**
- * Accepts:
- *  - valid JSON strings: {"amazon":"..."}
- *  - python-dict-like strings: {'amazon': '...'}
- *  - objects
- */
 function parseJsonField(value: any, fallback: any) {
   if (value === undefined || value === null || value === "") return fallback;
   if (typeof value === "object") return value;
@@ -28,14 +23,11 @@ function parseJsonField(value: any, fallback: any) {
   const s0 = String(value).trim();
   if (!s0) return fallback;
 
-  // 1) strict JSON
   try {
     return JSON.parse(s0);
   } catch {}
 
-  // 2) python-dict-ish -> JSON (simple single-quote replacement)
   const s1 = s0.replace(/^\uFEFF/, "").replace(/'/g, '"');
-
   try {
     return JSON.parse(s1);
   } catch {
@@ -51,7 +43,7 @@ function chunk<T>(arr: T[], size: number) {
 
 function cleanKey(k: string) {
   return String(k || "")
-    .replace(/^\uFEFF/, "") // remove BOM
+    .replace(/^\uFEFF/, "")
     .trim()
     .toLowerCase();
 }
@@ -62,20 +54,14 @@ function normalizeRow(r: Row): Row {
     out[cleanKey(k)] = typeof v === "string" ? v.trim() : v;
   }
 
-  // Header aliases (just in case)
   if (out["product_category"] && !out["category"]) out["category"] = out["product_category"];
   if (out["cat"] && !out["category"]) out["category"] = out["cat"];
-
   if (out["make"] && !out["brand"]) out["brand"] = out["make"];
-
   if (out["name"] && !out["model"]) out["model"] = out["name"];
   if (out["product"] && !out["model"]) out["model"] = out["product"];
-
   if (out["image"] && !out["image_url"]) out["image_url"] = out["image"];
   if (out["imageurl"] && !out["image_url"]) out["image_url"] = out["imageurl"];
-
   if (out["price"] && !out["price_hint"]) out["price_hint"] = out["price"];
-
   if (out["affiliate"] && !out["affiliate_links"]) out["affiliate_links"] = out["affiliate"];
   if (out["links"] && !out["affiliate_links"]) out["affiliate_links"] = out["links"];
 
@@ -98,10 +84,9 @@ export async function POST(req: Request) {
     const errors: any[] = [];
     const records: any[] = [];
 
-    // Build records + validate
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const rowNum = i + 2; // CSV row number (header + 1-indexed)
+      const rowNum = i + 2;
 
       const category = String(r.category || "").trim();
       const brand = String(r.brand || "").trim();
@@ -164,35 +149,55 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ DEDUPE by your unique key (category, brand, model)
-    // Postgres upsert cannot affect the same conflict target twice in one statement.
+    // Dedupe by (category, brand, model)
     const dedupedMap = new Map<string, any>();
     for (const rec of records) {
       const key = `${rec.category}||${rec.brand}||${rec.model}`.toLowerCase();
-      // "last one wins"
       dedupedMap.set(key, rec);
     }
     const dedupedRecords = Array.from(dedupedMap.values());
     const skippedDuplicates = records.length - dedupedRecords.length;
 
-    const supabase = await createSupabaseServerClient();
-
     const batches = chunk(dedupedRecords, 50);
     let upserted = 0;
 
     for (let b = 0; b < batches.length; b++) {
-      const { data, error } = await supabase
-        .from("products")
-        .upsert(batches[b], {
-          onConflict: "category,brand,model",
-          ignoreDuplicates: false,
-        })
-        .select("id");
+      try {
+        // Use ON CONFLICT for upsert via raw SQL approach through drizzle
+        for (const rec of batches[b]) {
+          const existing = await db
+            .select({ id: products.id })
+            .from(products)
+            .where(
+              and(
+                eq(products.category, rec.category),
+                eq(products.brand, rec.brand),
+                eq(products.model, rec.model)
+              )
+            )
+            .limit(1);
 
-      if (error) {
+          if (existing.length > 0) {
+            await db
+              .update(products)
+              .set({
+                price_hint: rec.price_hint,
+                image_url: rec.image_url,
+                warranty_text: rec.warranty_text,
+                affiliate_links: rec.affiliate_links,
+                specs: rec.specs,
+                is_active: rec.is_active,
+              })
+              .where(eq(products.id, existing[0].id));
+          } else {
+            await db.insert(products).values(rec);
+          }
+          upserted++;
+        }
+      } catch (batchErr: any) {
         return NextResponse.json(
           {
-            error: `Batch ${b + 1} failed: ${error.message}`,
+            error: `Batch ${b + 1} failed: ${batchErr?.message}`,
             upserted,
             skipped_duplicates: skippedDuplicates,
             errors: errors.slice(0, 25),
@@ -201,8 +206,6 @@ export async function POST(req: Request) {
           { status: 500 }
         );
       }
-
-      upserted += data?.length ?? batches[b].length;
     }
 
     return NextResponse.json({

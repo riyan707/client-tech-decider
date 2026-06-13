@@ -1,4 +1,7 @@
-import { supabaseServer } from "@/app/utils/supabase/server";
+export const dynamic = "force-dynamic";
+import { db } from "@/lib/db";
+import { quiz_questions } from "@/lib/db/schema";
+import { eq, and, asc } from "drizzle-orm";
 import QuizClient from "./quiz-client";
 import type { QuizCategory, QuizQuestion } from "@/lib/types";
 import { notFound } from "next/navigation";
@@ -13,24 +16,27 @@ export default async function QuizPage({
 
   if (category !== "smartphones" && category !== "tvs") return notFound();
 
-  const { data, error } = await supabaseServer
-    .from("quiz_questions")
-    .select("id, category, question, type, options, weightings, order")
-    .eq("category", category)
-    .eq("is_active", true)
-    .order("order", { ascending: true });
+  const rows = await db
+    .select({
+      id: quiz_questions.id,
+      category: quiz_questions.category,
+      question: quiz_questions.question,
+      type: quiz_questions.type,
+      options: quiz_questions.options,
+      weightings: quiz_questions.weightings,
+      order: quiz_questions.order,
+    })
+    .from(quiz_questions)
+    .where(and(eq(quiz_questions.category, category), eq(quiz_questions.is_active, true)))
+    .orderBy(asc(quiz_questions.order));
 
-  if (error) {
-    throw new Error(`Failed to load quiz questions: ${error.message}`);
-  }
-
-  const questions = (data ?? []) as unknown as QuizQuestion[];
+  const questions = rows as unknown as QuizQuestion[];
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-10">
       <h1 className="text-2xl font-semibold capitalize">{category} Quiz</h1>
       <p className="mt-2 text-sm text-neutral-600">
-        Answer a few questions and we’ll recommend the best options for you.
+        Answer a few questions and we&apos;ll recommend the best options for you.
       </p>
 
       <div className="mt-8">

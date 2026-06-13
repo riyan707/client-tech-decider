@@ -1,101 +1,79 @@
+export const dynamic = "force-dynamic";
 import Link from 'next/link'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
-
-type ProductCountRow = { count: number | null }
-type SubmissionCountRow = { count: number | null }
-
-type SubmissionRow = {
-  top_3: Array<{
-    id?: string
-    brand?: string
-    model?: string
-  }> | any
-}
-
-function safeCount(row: ProductCountRow | SubmissionCountRow | null) {
-  return row?.count ?? 0
-}
+import { db } from "@/lib/db"
+import { products, quiz_submissions } from "@/lib/db/schema"
+import { eq, gte, desc, count, sql } from "drizzle-orm"
 
 export default async function AdminDashboardPage() {
-  const supabase = await createSupabaseServerClient()
-
   // 1) Total products
-  const { count: totalProducts, error: e1 } = await supabase
-    .from('products')
-    .select('*', { count: 'exact', head: true })
-  if (e1) throw new Error(e1.message)
+  const [totalRow] = await db
+    .select({ count: count() })
+    .from(products);
 
   // 2) Active products
-  const { count: activeProducts, error: e2 } = await supabase
-    .from('products')
-    .select('*', { count: 'exact', head: true })
-    .eq('is_active', true)
-  if (e2) throw new Error(e2.message)
+  const [activeRow] = await db
+    .select({ count: count() })
+    .from(products)
+    .where(eq(products.is_active, true));
 
   // 3) Submissions 7d / 30d
-  const now = new Date()
+  const now = new Date();
   const daysAgo = (n: number) => {
-    const d = new Date(now)
-    d.setDate(d.getDate() - n)
-    return d.toISOString()
-  }
+    const d = new Date(now);
+    d.setDate(d.getDate() - n);
+    return d;
+  };
 
-  const { count: sub7, error: e3 } = await supabase
-    .from('quiz_submissions')
-    .select('*', { count: 'exact', head: true })
-    .gte('created_at', daysAgo(7))
-  if (e3) throw new Error(e3.message)
+  const [sub7Row] = await db
+    .select({ count: count() })
+    .from(quiz_submissions)
+    .where(gte(quiz_submissions.created_at, daysAgo(7)));
 
-  const { count: sub30, error: e4 } = await supabase
-    .from('quiz_submissions')
-    .select('*', { count: 'exact', head: true })
-    .gte('created_at', daysAgo(30))
-  if (e4) throw new Error(e4.message)
+  const [sub30Row] = await db
+    .select({ count: count() })
+    .from(quiz_submissions)
+    .where(gte(quiz_submissions.created_at, daysAgo(30)));
 
   // 4) Top recommended products (count)
-  // We’ll read recent submissions and count occurrences inside top_3.
-  // MVP: last 500 submissions.
-  const { data: recentSubs, error: e5 } = await supabase
-    .from('quiz_submissions')
-    .select('top_3')
-    .order('created_at', { ascending: false })
-    .limit(500)
-  if (e5) throw new Error(e5.message)
+  const recentSubs = await db
+    .select({ top_3: quiz_submissions.top_3 })
+    .from(quiz_submissions)
+    .orderBy(desc(quiz_submissions.created_at))
+    .limit(500);
 
-  const counts = new Map<string, number>()
+  const counts = new Map<string, number>();
 
-  for (const row of (recentSubs ?? []) as SubmissionRow[]) {
-    const top3 = Array.isArray(row.top_3) ? row.top_3 : []
+  for (const row of recentSubs) {
+    const top3 = Array.isArray(row.top_3) ? row.top_3 as any[] : [];
     for (const item of top3) {
-      // Try to build a stable display key even if structure differs
-      const brand = item?.brand ?? ''
-      const model = item?.model ?? ''
-      const id = item?.id ?? ''
+      const brand = item?.brand ?? '';
+      const model = item?.model ?? '';
+      const id = item?.id ?? '';
 
       const key =
         (brand && model) ? `${brand} ${model}` :
         id ? `Product ${id}` :
-        'Unknown product'
+        'Unknown product';
 
-      counts.set(key, (counts.get(key) ?? 0) + 1)
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
   }
 
   const topRecommended = Array.from(counts.entries())
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
+    .slice(0, 5);
 
-    return (
+  return (
     <div className="space-y-6">
       {/* Top stats cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total products" value={totalProducts ?? 0} sub="+0% this month" />
-        <StatCard title="Active products" value={activeProducts ?? 0} sub="Live in catalogue" />
-        <StatCard title="Submissions (7d)" value={sub7 ?? 0} sub="Last 7 days" />
-        <StatCard title="Submissions (30d)" value={sub30 ?? 0} sub="Last 30 days" />
+        <StatCard title="Total products" value={totalRow?.count ?? 0} sub="+0% this month" />
+        <StatCard title="Active products" value={activeRow?.count ?? 0} sub="Live in catalogue" />
+        <StatCard title="Submissions (7d)" value={sub7Row?.count ?? 0} sub="Last 7 days" />
+        <StatCard title="Submissions (30d)" value={sub30Row?.count ?? 0} sub="Last 30 days" />
       </div>
     
-      {/* Lower grid like the screenshot (left chart area placeholder, right activity list) */}
+      {/* Lower grid */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 rounded-2xl border bg-white p-5">
           <div className="mb-1 text-sm font-semibold text-neutral-900">Weekly Overview</div>

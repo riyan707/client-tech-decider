@@ -1,5 +1,7 @@
+export const dynamic = "force-dynamic";
 import { redirect } from 'next/navigation'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { db } from "@/lib/db"
+import { products } from "@/lib/db/schema"
 
 async function createProductAction(formData: FormData) {
   'use server'
@@ -8,6 +10,7 @@ async function createProductAction(formData: FormData) {
   const brand = String(formData.get('brand')).trim()
   const model = String(formData.get('model')).trim()
   const price_hint = String(formData.get('price_hint') || '').trim() || null
+  const image_url = String(formData.get('image_url') || '').trim() || null
   const warranty_text = String(formData.get('warranty_text') || '').trim() || null
   const is_active = String(formData.get('is_active')) === 'on'
 
@@ -31,19 +34,17 @@ async function createProductAction(formData: FormData) {
 
   if (!brand || !model) throw new Error('brand and model are required')
 
-  const supabase = await createSupabaseServerClient()
-  const { error } = await supabase.from('products').insert({
+  await db.insert(products).values({
     category,
     brand,
     model,
     price_hint,
+    image_url,
     warranty_text,
     affiliate_links,
     specs,
     is_active,
   })
-
-  if (error) throw new Error(error.message)
 
   redirect('/admin/products')
 }
@@ -75,6 +76,11 @@ export default function NewProductPage() {
         <label>
           Price hint
           <input name="price_hint" placeholder="e.g. £799" style={{ display: 'block', width: '100%', padding: 10 }} />
+        </label>
+
+        <label>
+          Image URL
+          <input name="image_url" placeholder="https://..." style={{ display: 'block', width: '100%', padding: 10 }} />
         </label>
 
         <label>

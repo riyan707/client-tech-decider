@@ -12,7 +12,12 @@ export function SiteFooter() {
           <Link href="/catalogue" className="hover:underline">Catalogue</Link>
           <Link href="/privacy" className="hover:underline">Privacy</Link>
           <Link href="/cookies" className="hover:underline">Cookies</Link>
-          <Link href="/affiliate-disclosure" className="hover:underline">Affiliate</Link>
+          <Link
+            href="/affiliate-disclosure"
+            className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
+          >
+            📋 Affiliate Disclosure
+          </Link>
         </div>
       </div>
     </footer>

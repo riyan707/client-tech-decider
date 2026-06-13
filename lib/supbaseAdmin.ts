@@ -1,7 +1,2 @@
-import { createClient } from "@supabase/supabase-js";
-
-export const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
+// Legacy shim — use lib/db directly in new code
+export { db } from "@/lib/db";

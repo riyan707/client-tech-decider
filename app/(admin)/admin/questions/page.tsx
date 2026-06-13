@@ -1,6 +1,9 @@
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { quiz_questions } from "@/lib/db/schema";
+import { eq, and, asc } from "drizzle-orm";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,10 +32,8 @@ async function toggleQuestionAction(formData: FormData) {
   const id = String(formData.get("id"));
   const next = String(formData.get("next")) === "true";
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from("quiz_questions").update({ is_active: next }).eq("id", id);
+  await db.update(quiz_questions).set({ is_active: next }).where(eq(quiz_questions.id, id));
 
-  if (error) throw new Error(error.message);
   revalidatePath("/admin/questions");
 }
 
@@ -41,64 +42,55 @@ async function moveQuestionAction(formData: FormData) {
   const id = String(formData.get("id"));
   const direction = String(formData.get("direction")) as "up" | "down";
 
-  const supabase = await createSupabaseServerClient();
-
   // current
-  const { data: current, error: e1 } = await supabase
-    .from("quiz_questions")
-    .select('id, category, "order"')
-    .eq("id", id)
-    .single();
+  const currentRows = await db
+    .select({ id: quiz_questions.id, category: quiz_questions.category, order: quiz_questions.order })
+    .from(quiz_questions)
+    .where(eq(quiz_questions.id, id))
+    .limit(1);
 
-  if (e1) throw new Error(e1.message);
+  const current = currentRows[0];
   if (!current) throw new Error("Question not found");
 
   const cat = current.category as Category;
   const curOrder = current.order as number;
-
   const neighborOrder = direction === "up" ? curOrder - 1 : curOrder + 1;
 
-  const { data: neighbor, error: e2 } = await supabase
-    .from("quiz_questions")
-    .select('id, "order"')
-    .eq("category", cat)
-    .eq("order", neighborOrder)
-    .single();
+  const neighborRows = await db
+    .select({ id: quiz_questions.id, order: quiz_questions.order })
+    .from(quiz_questions)
+    .where(and(eq(quiz_questions.category, cat), eq(quiz_questions.order, neighborOrder)))
+    .limit(1);
+
+  const neighbor = neighborRows[0];
 
   // no neighbor = nothing to do
-  if (e2 || !neighbor) {
+  if (!neighbor) {
     revalidatePath("/admin/questions");
     return;
   }
 
   // swap orders
-  const { error: e3 } = await supabase
-    .from("quiz_questions")
-    .update({ order: neighborOrder })
-    .eq("id", current.id);
-
-  if (e3) throw new Error(e3.message);
-
-  const { error: e4 } = await supabase
-    .from("quiz_questions")
-    .update({ order: curOrder })
-    .eq("id", neighbor.id);
-
-  if (e4) throw new Error(e4.message);
+  await db.update(quiz_questions).set({ order: neighborOrder }).where(eq(quiz_questions.id, current.id));
+  await db.update(quiz_questions).set({ order: curOrder }).where(eq(quiz_questions.id, neighbor.id));
 
   revalidatePath("/admin/questions");
 }
 
 async function getQuestionsByCategory(category: Category) {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("quiz_questions")
-    .select('id, category, question, "order", is_active')
-    .eq("category", category)
-    .order("order", { ascending: true });
+  const rows = await db
+    .select({
+      id: quiz_questions.id,
+      category: quiz_questions.category,
+      question: quiz_questions.question,
+      order: quiz_questions.order,
+      is_active: quiz_questions.is_active,
+    })
+    .from(quiz_questions)
+    .where(eq(quiz_questions.category, category))
+    .orderBy(asc(quiz_questions.order));
 
-  if (error) throw new Error(error.message);
-  return (data ?? []) as QQ[];
+  return rows as QQ[];
 }
 
 function StatusBadge({ active }: { active: boolean }) {

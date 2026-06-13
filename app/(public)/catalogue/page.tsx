@@ -1,8 +1,10 @@
+export const dynamic = "force-dynamic";
 import Link from "next/link";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { products } from "@/lib/db/schema";
+import { eq, and, or, ilike, asc, desc, sql } from "drizzle-orm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-
 import { ProductCard, type ProductCardData } from "@/components/product/ProductCard";
 
 type Category = "smartphones" | "tvs" | "all";
@@ -33,55 +35,58 @@ export default async function CataloguePage({
   const q = (sp.q ?? "").trim();
   const brand = (sp.brand ?? "").trim();
 
-  const supabase = await createSupabaseServerClient();
-
-  // -------------------------
-  // Sidebar brands (respect category unless "all")
-  // -------------------------
-  let brandsQuery = supabase
-    .from("products")
-    .select("brand")
-    .eq("is_active", true);
-
+  // Sidebar brands
+  const brandConditions = [eq(products.is_active, true)];
   if (category !== "all") {
-    brandsQuery = brandsQuery.eq("category", category);
+    brandConditions.push(eq(products.category, category));
   }
 
-  const { data: brandRows, error: brandErr } = await brandsQuery;
-  if (brandErr) throw new Error(brandErr.message);
+  const brandRows = await db
+    .selectDistinct({ brand: products.brand })
+    .from(products)
+    .where(and(...brandConditions));
 
   const brands = Array.from(
-    new Set((brandRows ?? []).map((r: any) => (r.brand ?? "").trim()).filter(Boolean))
+    new Set(brandRows.map((r) => (r.brand ?? "").trim()).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b));
 
-  // -------------------------
   // Products query
-  // -------------------------
-  let query = supabase
-    .from("products")
-    .select("id, category, brand, model, price_hint, affiliate_links, image_url")
-    .eq("is_active", true)
-    .order("updated_at", { ascending: false });
+  const conditions = [eq(products.is_active, true)];
+  if (category !== "all") conditions.push(eq(products.category, category));
+  if (brand) conditions.push(eq(products.brand, brand));
+  if (q) {
+    conditions.push(
+      or(
+        ilike(products.brand, `%${q}%`),
+        ilike(products.model, `%${q}%`)
+      )!
+    );
+  }
 
-  if (category !== "all") query = query.eq("category", category);
-  if (brand) query = query.eq("brand", brand);
-  if (q) query = query.or(`brand.ilike.%${q}%,model.ilike.%${q}%`);
+  const productRows = await db
+    .select({
+      id: products.id,
+      category: products.category,
+      brand: products.brand,
+      model: products.model,
+      price_hint: products.price_hint,
+      image_url: products.image_url,
+      affiliate_links: products.affiliate_links,
+    })
+    .from(products)
+    .where(and(...conditions))
+    .orderBy(desc(products.updated_at));
 
-  const { data: products, error } = await query;
-  if (error) throw new Error(error.message);
-
-  // Filters count: only count filters that are actually narrowing
   const activeFiltersCount = (category !== "all" ? 1 : 0) + (brand ? 1 : 0) + (q ? 1 : 0);
 
-  // Map DB rows -> shared component type
-  const cardProducts: ProductCardData[] = (products ?? []).map((p: any) => ({
+  const cardProducts: ProductCardData[] = productRows.map((p) => ({
     id: p.id,
-    category: p.category, // "tvs" | "smartphones"
+    category: p.category as "tvs" | "smartphones",
     brand: p.brand,
     model: p.model,
     price_hint: p.price_hint,
     image_url: p.image_url,
-    affiliate_links: p.affiliate_links,
+    affiliate_links: p.affiliate_links as Record<string, string> | null,
   }));
 
   return (
@@ -222,7 +227,7 @@ export default async function CataloguePage({
 
                   {q && (
                     <Badge variant="secondary" className="rounded-full">
-                      “{q}”
+                      &ldquo;{q}&rdquo;
                     </Badge>
                   )}
 

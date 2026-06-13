@@ -1,6 +1,9 @@
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { products } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -11,11 +14,9 @@ type ProductRow = {
   model: string;
   price_hint: string | null;
   image_url: string | null;
-
-  affiliate_links: Record<string, string> | null; // jsonb
+  affiliate_links: Record<string, string> | null;
   warranty_text: string | null;
-
-  specs: Record<string, unknown> | null; // jsonb
+  specs: Record<string, unknown> | null;
 };
 
 function getRetailers(affiliateLinks: any): Array<{ key: string; url: string }> {
@@ -42,7 +43,6 @@ function formatValue(key: string, raw: unknown) {
   const k = key.trim().toLowerCase();
 
   if (typeof raw === "boolean") {
-    if (k === "vrr") return raw ? "Yes" : "No";
     return raw ? "Yes" : "No";
   }
 
@@ -94,7 +94,7 @@ function getGoodFor(product: { category: ProductRow["category"]; specs: Record<s
 
     if (hdrTier !== null) {
       if (hdrTier >= 3) bullets.push("HDR movies and series (stronger contrast/highlights than basic HDR).");
-      else bullets.push("Casual HDR viewing (fine, but not a ‘wow’ HDR experience).");
+      else bullets.push("Casual HDR viewing (fine, but not a 'wow' HDR experience).");
     }
 
     if (vrr === true) bullets.push("Console gaming (PS5/Xbox) with smoother motion thanks to VRR.");
@@ -116,16 +116,25 @@ export default async function ProductPage({
 }) {
   const { id } = await params;
 
-  const supabase = await createSupabaseServerClient();
+  const rows = await db
+    .select({
+      id: products.id,
+      category: products.category,
+      brand: products.brand,
+      model: products.model,
+      price_hint: products.price_hint,
+      image_url: products.image_url,
+      affiliate_links: products.affiliate_links,
+      warranty_text: products.warranty_text,
+      specs: products.specs,
+    })
+    .from(products)
+    .where(eq(products.id, id))
+    .limit(1);
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("id,category,brand,model,price_hint,image_url,affiliate_links,warranty_text,specs")
-    .eq("id", id)
-    .single<ProductRow>();
+  const data = rows[0] as ProductRow | undefined;
 
-  if (error || !data) {
-    if (process.env.NODE_ENV !== "production") console.error(error);
+  if (!data) {
     return notFound();
   }
 
@@ -157,7 +166,7 @@ export default async function ProductPage({
 
       {/* Row 1: Image -> Affiliate links */}
       <div className="grid gap-6 md:grid-cols-12">
-        {/* Image card (smaller) */}
+        {/* Image card */}
         <div className="md:col-span-5">
           <div className="overflow-hidden rounded-2xl border bg-muted/20">
             {data.image_url ? (
@@ -180,7 +189,7 @@ export default async function ProductPage({
           </div>
         </div>
 
-        {/* Affiliate links (the conversion hero) */}
+        {/* Affiliate links */}
         <div className="md:col-span-7">
           <div className="rounded-2xl border bg-background p-5">
             <div className="flex items-start justify-between gap-3">
@@ -211,7 +220,6 @@ export default async function ProductPage({
               )}
             </div>
 
-            {/* Optional micro-trust line */}
             <div className="mt-4 text-xs text-muted-foreground">
               Tip: open 2 retailers to compare price + delivery time.
             </div>
