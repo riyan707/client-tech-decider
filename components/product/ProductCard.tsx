@@ -66,7 +66,7 @@ export function ProductCard({
       {/* Overlay link (card clickable) */}
       <Link
         href={`/products/${product.id}`}
-        className="absolute inset-0 z-0"
+        className="absolute inset-0 z-10"
         aria-label={`View ${product.brand} ${product.model}`}
       />
 
@@ -102,7 +102,7 @@ export function ProductCard({
       {/* Content */}
       <div className={isCompact ? "p-4" : "p-5"}>
         <div className="flex items-start justify-between gap-3">
-          <div className="relative z-10">
+          <div className="relative z-20">
             <div className="text-sm text-muted-foreground">{product.brand}</div>
             <h3 className={isCompact ? "mt-0.5 text-lg font-semibold leading-tight" : "mt-0.5 text-xl font-semibold leading-tight tracking-tight"}>
               {product.model}

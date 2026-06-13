@@ -142,6 +142,13 @@ export default async function ProductPage({
   const specsRows = normalizeSpecs(data.specs);
   const goodFor = getGoodFor({ category: data.category, specs: data.specs });
 
+  // Blog card — only for TVs
+  const tvBlogPost = data.category === "tvs" ? {
+    slug: "oled-vs-qled-vs-miniled-explained",
+    title: "OLED vs QLED vs Mini-LED vs MicroLED: Which Is Right for You?",
+    excerpt: "TV shopping is confusing. We break down every display technology in plain English so you can make the right choice.",
+  } : null;
+
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
       {/* Top */}
@@ -229,8 +236,8 @@ export default async function ProductPage({
 
       {/* Row 2: All info */}
       <div className="mt-8 grid gap-6 md:grid-cols-12">
-        {/* Good for */}
-        <div className="md:col-span-5">
+        {/* Good for + Blog card */}
+        <div className="md:col-span-5 flex flex-col gap-6">
           <div className="rounded-2xl border bg-background p-5">
             <h2 className="text-sm font-semibold">Good for</h2>
             <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
@@ -242,6 +249,22 @@ export default async function ProductPage({
               ))}
             </ul>
           </div>
+
+          {tvBlogPost && (
+            <div className="rounded-2xl border bg-background p-5 flex flex-col">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Guide</span>
+              <h3 className="mt-2 text-sm font-semibold leading-snug">{tvBlogPost.title}</h3>
+              <p className="mt-2 text-sm text-muted-foreground leading-relaxed line-clamp-3">{tvBlogPost.excerpt}</p>
+              <div className="mt-4 flex justify-end">
+                <Link
+                  href={`/blog/${tvBlogPost.slug}`}
+                  className="text-xs font-medium text-foreground underline underline-offset-2 hover:opacity-70"
+                >
+                  Continue reading →
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Important features (specs) */}
