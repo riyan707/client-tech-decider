@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Search, X, ArrowRight } from "lucide-react";
+import { Search, X, ArrowRight, Menu } from "lucide-react";
 
 const QUICK_LINKS = [
   { label: "Browse Catalogue", href: "/catalogue" },
@@ -12,123 +12,143 @@ const QUICK_LINKS = [
   { label: "Best Value Phones", href: "/catalogue?category=smartphones&q=budget" },
 ];
 
+const NAV_LINKS = [
+  { label: "Catalogue", href: "/catalogue" },
+  { label: "Guides", href: "/blog" },
+];
+
 export function Navbar() {
-  const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
 
-  // Focus input when opened
-  useEffect(() => {
-    if (open) {
-      const t = setTimeout(() => inputRef.current?.focus(), 50);
-      return () => clearTimeout(t);
-    }
-  }, [open]);
-
-  // ESC to close
+  // Close both on ESC
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") { setSearchOpen(false); setMenuOpen(false); }
     };
-    if (open) window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  }, []);
 
-  // Click outside to close
+  // Focus input when search opens
   useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (!open) return;
-      const target = e.target as Node;
-      if (panelRef.current && !panelRef.current.contains(target)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [open]);
+    if (searchOpen) {
+      const t = setTimeout(() => inputRef.current?.focus(), 60);
+      return () => clearTimeout(t);
+    }
+  }, [searchOpen]);
+
+  // Lock body scroll when overlay open
+  useEffect(() => {
+    document.body.style.overflow = searchOpen || menuOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [searchOpen, menuOpen]);
+
+  function closeAll() { setSearchOpen(false); setMenuOpen(false); }
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur">
-      {/* Top bar (TRUE centered middle) */}
-      <div className="mx-auto grid h-12 max-w-6xl grid-cols-3 items-center px-6">
-        {/* Left: Logo */}
-        <div className="justify-self-start">
-          <Link
-            href="/"
-            className={`text-sm font-semibold tracking-tight transition-opacity ${
-              open ? "opacity-60" : "opacity-100"
-            }`}
-          >
-            Tech Decider
-          </Link>
+    <>
+      {/* ── Navbar bar ── */}
+      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur">
+        <div className="mx-auto flex h-12 max-w-6xl items-center px-6">
+
+          {/* Desktop: 3-col grid */}
+          <div className="hidden md:grid w-full grid-cols-3 items-center">
+            {/* Left: Logo */}
+            <div>
+              <Link href="/" className="text-sm font-semibold tracking-tight">
+                Tech Decider
+              </Link>
+            </div>
+
+            {/* Center: Nav links */}
+            <nav className="flex justify-center items-center gap-7 text-sm text-muted-foreground">
+              {NAV_LINKS.map((l) => (
+                <Link key={l.href} href={l.href} className="hover:text-foreground">
+                  {l.label}
+                </Link>
+              ))}
+            </nav>
+
+            {/* Right: Search */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => setSearchOpen(true)}
+                aria-label="Open search"
+                className="rounded-full p-2 hover:bg-muted/60 transition"
+              >
+                <Search className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile: Logo | Search | Hamburger */}
+          <div className="flex md:hidden w-full items-center justify-between">
+            {/* Logo */}
+            <Link href="/" className="text-sm font-semibold tracking-tight">
+              Tech Decider
+            </Link>
+
+            {/* Right icons */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => { setSearchOpen(true); setMenuOpen(false); }}
+                aria-label="Open search"
+                className="rounded-full p-2 hover:bg-muted/60 transition"
+              >
+                <Search className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => { setMenuOpen(true); setSearchOpen(false); }}
+                aria-label="Open menu"
+                className="rounded-full p-2 hover:bg-muted/60 transition"
+              >
+                <Menu className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
         </div>
+      </header>
 
-        {/* Center: Nav */}
-        <nav
-          className={`hidden justify-self-center items-center gap-7 text-sm text-muted-foreground md:flex transition-opacity ${
-            open ? "opacity-40" : "opacity-100"
-          }`}
-        >
-          <Link href="/catalogue" className="hover:text-foreground">
-            Catalogue
-          </Link>
-          <Link href="/blog" className="hover:text-foreground">
-            Guides
-          </Link>
-        </nav>
-
-        {/* Right: Icons */}
-        <div className="justify-self-end flex items-center gap-1">
-          {!open ? (
+      {/* ── Search overlay (full viewport) ── */}
+      {searchOpen && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-background/95 backdrop-blur-md">
+          {/* Close button */}
+          <div className="flex h-12 items-center justify-end px-6 border-b">
             <button
-              onClick={() => setOpen(true)}
-              aria-label="Open search"
-              className="rounded-full p-2 hover:bg-muted/60 transition"
-            >
-              <Search className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              onClick={() => setOpen(false)}
+              onClick={() => setSearchOpen(false)}
               aria-label="Close search"
               className="rounded-full p-2 hover:bg-muted/60 transition"
             >
               <X className="h-4 w-4" />
             </button>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* Dropdown panel (Apple-style) */}
-      <div
-        className={`relative overflow-hidden transition-[max-height,opacity] duration-300 ease-out ${
-          open ? "max-h-[520px] opacity-100" : "max-h-0 opacity-0"
-        }`}
-      >
-        {/* subtle background like Apple */}
-        <div className="border-t bg-muted/20">
-          <div ref={panelRef} className="mx-auto max-w-6xl px-6 py-8">
-            {/* Big search */}
-            <form action="/catalogue" method="GET" className="flex items-center gap-3">
-              <Search className="h-6 w-6 text-muted-foreground" />
+          {/* Content */}
+          <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-10">
+            {/* Big search input */}
+            <form action="/catalogue" method="GET" onSubmit={closeAll} className="flex items-center gap-3 border-b pb-4">
+              <Search className="h-5 w-5 shrink-0 text-muted-foreground" />
               <input
                 ref={inputRef}
                 name="q"
                 placeholder="Search Tech Decider"
-                className="w-full bg-transparent text-4xl font-semibold tracking-tight text-muted-foreground placeholder:text-muted-foreground/70 outline-none"
+                className="w-full bg-transparent text-2xl font-semibold tracking-tight text-foreground placeholder:text-muted-foreground/60 outline-none"
               />
             </form>
 
             {/* Quick links */}
-            <div className="mt-10">
-              <div className="text-sm text-muted-foreground">Quick Links</div>
-              <div className="mt-4 flex flex-col gap-3">
+            <div className="mt-8">
+              <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Quick Links</div>
+              <div className="mt-5 flex flex-col gap-4">
                 {QUICK_LINKS.map((l) => (
                   <Link
                     key={l.href}
                     href={l.href}
-                    onClick={() => setOpen(false)}
-                    className="group inline-flex items-center gap-3 text-base font-medium text-foreground/90 hover:text-foreground"
+                    onClick={closeAll}
+                    className="group inline-flex items-center gap-3 text-base font-medium text-foreground/80 hover:text-foreground"
                   >
                     <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition" />
                     {l.label}
@@ -138,10 +158,40 @@ export function Navbar() {
             </div>
           </div>
         </div>
+      )}
 
-        {/* Click-outside area feel (optional, subtle) */}
-        <div className="h-6 bg-background" />
-      </div>
-    </header>
+      {/* ── Mobile hamburger menu overlay (full viewport) ── */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-background md:hidden">
+          {/* Top bar */}
+          <div className="flex h-12 items-center justify-between px-6 border-b">
+            <Link href="/" onClick={closeAll} className="text-sm font-semibold tracking-tight">
+              Tech Decider
+            </Link>
+            <button
+              onClick={() => setMenuOpen(false)}
+              aria-label="Close menu"
+              className="rounded-full p-2 hover:bg-muted/60 transition"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Nav links */}
+          <nav className="flex flex-col px-6 pt-10 gap-2">
+            {NAV_LINKS.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                onClick={closeAll}
+                className="py-3 text-2xl font-semibold tracking-tight text-foreground border-b border-muted hover:opacity-60 transition-opacity"
+              >
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      )}
+    </>
   );
 }
