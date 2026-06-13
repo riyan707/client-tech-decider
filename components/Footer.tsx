@@ -16,7 +16,7 @@ export function SiteFooter() {
             href="/affiliate-disclosure"
             className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
           >
-            📋 Affiliate Disclosure
+            Affiliate Disclosure
           </Link>
         </div>
       </div>
