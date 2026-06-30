@@ -181,11 +181,11 @@ export default async function ProductPage({
               <img
                 src={data.image_url}
                 alt={`${data.brand} ${data.model}`}
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain p-4"
                 loading="lazy"
               />
             ) : (
-              <div className="flex aspect-[4/3] items-center justify-center text-sm text-muted-foreground">
+              <div className="flex aspect-4/3 items-center justify-center text-sm text-muted-foreground">
                 Image placeholder
               </div>
             )}
@@ -243,7 +243,7 @@ export default async function ProductPage({
             <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
               {goodFor.map((b, idx) => (
                 <li key={idx} className="flex gap-2">
-                  <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
                   <span>{b}</span>
                 </li>
               ))}

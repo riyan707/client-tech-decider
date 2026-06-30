@@ -69,13 +69,14 @@ export function Navbar() {
       <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-12 max-w-6xl items-center px-6">
 
-          {/* Desktop */}
+          {/* Desktop: logo | nav links | quiz CTA + search */}
           <div className="hidden md:grid w-full grid-cols-3 items-center">
             <div>
               <Link href="/" className="text-sm font-semibold tracking-tight">
                 Tech Decider
               </Link>
             </div>
+
             <nav className="flex justify-center items-center gap-7 text-sm text-muted-foreground">
               {NAV_LINKS.map((l) => (
                 <Link key={l.href} href={l.href} className="hover:text-foreground transition-colors">
@@ -83,7 +84,15 @@ export function Navbar() {
                 </Link>
               ))}
             </nav>
-            <div className="flex justify-end">
+
+            <div className="flex items-center justify-end gap-2">
+              {/* Primary CTA — quiz */}
+              <Link
+                href="/quiz"
+                className="rounded-full bg-foreground px-4 py-1.5 text-xs font-semibold text-background transition hover:opacity-80"
+              >
+                Take the quiz
+              </Link>
               <button
                 onClick={() => setSearchOpen(true)}
                 aria-label="Open search"
@@ -94,7 +103,7 @@ export function Navbar() {
             </div>
           </div>
 
-          {/* Mobile */}
+          {/* Mobile: logo | search + hamburger */}
           <div className="flex md:hidden w-full items-center justify-between">
             <Link href="/" className="text-sm font-semibold tracking-tight">
               Tech Decider
@@ -129,9 +138,8 @@ export function Navbar() {
             initial="hidden"
             animate="visible"
             exit="exit"
-            className="fixed inset-0 z-[60] bg-background/95 backdrop-blur-md flex flex-col"
+            className="fixed inset-0 z-60 bg-background/95 backdrop-blur-md flex flex-col"
           >
-            {/* Close bar */}
             <div className="flex h-12 items-center justify-end px-6 border-b shrink-0">
               <button
                 onClick={() => setSearchOpen(false)}
@@ -195,7 +203,7 @@ export function Navbar() {
             initial="hidden"
             animate="visible"
             exit="exit"
-            className="fixed inset-0 z-[60] flex flex-col bg-background md:hidden"
+            className="fixed inset-0 z-60 flex flex-col bg-background md:hidden"
           >
             <div className="flex h-12 items-center justify-between px-6 border-b shrink-0">
               <Link href="/" onClick={closeAll} className="text-sm font-semibold tracking-tight">
@@ -211,7 +219,7 @@ export function Navbar() {
             </div>
 
             <nav className="flex flex-col px-6 pt-10 gap-2">
-              {NAV_LINKS.map((l, i) => (
+              {[...NAV_LINKS, { label: "Take the quiz", href: "/quiz" }].map((l, i) => (
                 <motion.div
                   key={l.href}
                   initial={{ opacity: 0, x: 20 }}

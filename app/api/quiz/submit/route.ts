@@ -87,6 +87,7 @@ export async function POST(req: Request) {
         options: quiz_questions.options,
         weightings: quiz_questions.weightings,
         order: quiz_questions.order,
+        key: quiz_questions.key,
       })
       .from(quiz_questions)
       .where(and(eq(quiz_questions.category, category), eq(quiz_questions.is_active, true)))
@@ -117,7 +118,7 @@ export async function POST(req: Request) {
     }
 
     const rules = typedQuestions.map((q) => buildRuleFromQuestion(q));
-    const config: RecommendConfig = detectTieBreakerConfig(typedQuestions);
+    const config: RecommendConfig = detectTieBreakerConfig(typedQuestions, answers);
 
     const desiredCount = Math.min(3, qualifiedProducts.length);
 
@@ -178,9 +179,13 @@ function normalizeAnswers(raw: Record<string, unknown>): Record<string, string> 
   }, {});
 }
 
-function detectTieBreakerConfig(questions: QuizQuestion[]): RecommendConfig {
+function detectTieBreakerConfig(questions: QuizQuestion[], answers: Record<string, string>): RecommendConfig {
+  const brandFromDb = findQuestionIdByInference(questions, "brand");
+  // TV quiz answers are keyed by tree node IDs — fall back to "brand_preference" if no DB brand question exists
+  const brandQuestionId = brandFromDb ?? (answers.brand_preference !== undefined ? "brand_preference" : undefined);
+
   return {
-    brandQuestionId: findQuestionIdByInference(questions, "brand"),
+    brandQuestionId,
     warrantyQuestionId: findQuestionIdByInference(questions, "warranty"),
     performanceQuestionId: findQuestionIdByInference(questions, "performance"),
     noPreferenceValues: [null, "", "No preference", "no preference", "no_preference", "none"],

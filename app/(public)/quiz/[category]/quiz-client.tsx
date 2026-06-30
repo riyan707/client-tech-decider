@@ -52,9 +52,11 @@ export default function QuizClient({ category, questions }: Props) {
 
   useEffect(() => { storeUtm(captureUtmsFromUrl()); }, []);
 
+  // Use total+1 so the bar never reaches 100% while still on a question.
+  // It fills to ~83% on the last question and completes when the page navigates away.
   const progressPct = useMemo(() => {
     if (total === 0) return 0;
-    return Math.round(((step + 1) / total) * 100);
+    return Math.round(((step + 1) / (total + 1)) * 100);
   }, [step, total]);
 
   function selectOption(value: string) {
@@ -119,7 +121,7 @@ export default function QuizClient({ category, questions }: Props) {
         </div>
 
         {/* Question + options (animated) */}
-        <div className="mt-5 min-h-[280px]">
+        <div className="mt-5 min-h-70">
           <AnimatePresence mode="wait" custom={dir}>
             <motion.div
               key={step}

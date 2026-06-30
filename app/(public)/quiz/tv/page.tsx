@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { TV_QUIZ_TREE, getTVQuizFlow, TVTreeNode } from "@/lib/tv-quiz-tree";
+import { TV_QUIZ_TREE, getTVQuizFlow, getMaxTVQuestions, TVTreeNode } from "@/lib/tv-quiz-tree";
 import Link from "next/link";
 
 const UTM_STORAGE_KEY = "dsgnr_utms_v1";
@@ -47,9 +47,12 @@ export default function TVQuizPage() {
   const currentId = flow[stepIndex];
   const currentNode: TVTreeNode | undefined = TV_QUIZ_TREE.find((n) => n.id === currentId);
 
+  // Fixed denominator = longest possible path + 1 (email step).
+  // Using flow.length would shrink/grow the denominator as branches resolve, making the bar jump.
+  const MAX_STEPS = getMaxTVQuestions() + 1;
   const progressPct = showEmailStep
     ? 100
-    : Math.round(((stepIndex + 1) / (flow.length + 1)) * 100);
+    : Math.round(((stepIndex + 1) / MAX_STEPS) * 100);
 
   function selectOption(value: string) {
     setAnswers((prev) => ({ ...prev, [currentId]: value }));
@@ -109,7 +112,7 @@ export default function TVQuizPage() {
       <div className="mb-2 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">TV Quiz</h1>
         <span className="text-xs text-neutral-500">
-          {showEmailStep ? "Almost done" : `Question ${stepIndex + 1} of ${flow.length}`}
+          {showEmailStep ? "Almost done" : `Question ${stepIndex + 1} of ${MAX_STEPS - 1}`}
         </span>
       </div>
 

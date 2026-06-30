@@ -11,6 +11,8 @@ async function updateQuestionAction(formData: FormData) {
   const question = String(formData.get('question')).trim()
   const order = Number(formData.get('order'))
   const is_active = String(formData.get('is_active')) === 'on'
+  const keyRaw = String(formData.get('key') || '').trim()
+  const key = keyRaw.length > 0 ? keyRaw : null
 
   const optionsRaw = String(formData.get('options') || '[]')
   const weightingsRaw = String(formData.get('weightings') || '{}')
@@ -38,7 +40,7 @@ async function updateQuestionAction(formData: FormData) {
 
   await db
     .update(quiz_questions)
-    .set({ question, options, weightings, order, is_active })
+    .set({ question, options, weightings, order, is_active, key })
     .where(eq(quiz_questions.id, id))
 
   redirect('/admin/questions')
@@ -88,6 +90,17 @@ export default async function EditQuestionPage({
             required
             defaultValue={q.order}
             style={{ display: 'block', width: 160, padding: 10 }}
+          />
+        </label>
+
+        <label>
+          Key <span style={{ fontWeight: 'normal', color: '#666' }}>(optional — must match the TV quiz tree node ID, e.g. <code>price_band</code>)</span>
+          <input
+            type="text"
+            name="key"
+            defaultValue={q.key ?? ''}
+            placeholder="e.g. price_band, screen_size_pref, gaming"
+            style={{ display: 'block', width: '100%', padding: 10, fontFamily: 'monospace' }}
           />
         </label>
 

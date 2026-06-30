@@ -68,9 +68,22 @@ export const TV_QUIZ_TREE: TVTreeNode[] = [
     id: "gaming",
     question: "Do you use your TV for gaming?",
     options: [
-      { label: "Yes — I need 120Hz and VRR", value: "serious", next: null },
-      { label: "Occasionally", value: "occasional", next: null },
-      { label: "No", value: "no", next: null },
+      { label: "Yes — I need 120Hz and VRR", value: "serious", next: "brand_preference" },
+      { label: "Occasionally", value: "occasional", next: "brand_preference" },
+      { label: "No", value: "no", next: "brand_preference" },
+      { label: "No preference", value: "no_preference", next: "brand_preference" },
+    ],
+  },
+  {
+    id: "brand_preference",
+    question: "Do you have a brand preference?",
+    hint: "If you select a brand, we'll prioritise it in your results — as long as it meets your other criteria.",
+    options: [
+      { label: "LG", value: "lg", next: null },
+      { label: "Samsung", value: "samsung", next: null },
+      { label: "Sony", value: "sony", next: null },
+      { label: "Hisense", value: "hisense", next: null },
+      { label: "TCL", value: "tcl", next: null },
       { label: "No preference", value: "no_preference", next: null },
     ],
   },
@@ -97,4 +110,21 @@ export function getTVQuizFlow(answers: Record<string, string>): string[] {
     current = next;
   }
   return flow;
+}
+
+// Returns the longest possible question count across all branches.
+// Used as a fixed denominator for the progress bar so it never jumps around.
+export function getMaxTVQuestions(): number {
+  function maxDepth(nodeId: string | null, seen = new Set<string>()): number {
+    if (!nodeId || seen.has(nodeId)) return 0;
+    seen.add(nodeId);
+    const node = TV_QUIZ_TREE.find((n) => n.id === nodeId);
+    if (!node) return 0;
+    const childDepths = node.options
+      .map((o) => o.next)
+      .filter((n): n is string => n !== null)
+      .map((n) => maxDepth(n, new Set(seen)));
+    return 1 + (childDepths.length > 0 ? Math.max(...childDepths) : 0);
+  }
+  return maxDepth(TV_QUIZ_TREE[0].id);
 }

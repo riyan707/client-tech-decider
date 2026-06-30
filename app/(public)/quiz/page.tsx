@@ -18,7 +18,7 @@ export default function QuizEntryPage() {
           <CardContent className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">Gaming, movies, sports, family.</p>
             <Button asChild>
-              <Link href="/quiz/tvs">Start</Link>
+              <Link href="/quiz/tv">Start</Link>
             </Button>
           </CardContent>
         </Card>

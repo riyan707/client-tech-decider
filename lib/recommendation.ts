@@ -151,8 +151,16 @@ export function recommendTopProducts(
     return sum + weight * points;
   }, 0);
 
+  // Brand preference boost — 25% of total max score added to matching products.
+  // Kept separate from question score so percent display stays accurate (won't exceed 100%).
+  const brandAnswer = config.brandQuestionId ? answers[config.brandQuestionId] : undefined;
+  const brandBoost =
+    brandAnswer && !isNoPreference(brandAnswer) && totalMaxScore > 0
+      ? Math.round(totalMaxScore * 0.25)
+      : 0;
+
   const scored = products.map((product) => {
-    let score = 0;
+    let questionScore = 0;
     const reasons: string[] = [];
 
     for (const entry of answeredRules) {
@@ -161,12 +169,18 @@ export function recommendTopProducts(
 
       if (entry.rule.type === "field_equals") {
         const result = evaluateFieldEqualsRule(product, entry.rule as FieldEqualsRule, answer, entry.questionText);
-        score += result.score;
+        questionScore += result.score;
         if (result.reason) reasons.push(result.reason);
       }
     }
 
-    const percent = totalMaxScore > 0 ? Math.round((score / totalMaxScore) * 100) : 0;
+    let score = questionScore;
+    if (brandBoost > 0 && normalizeMatches(product.brand, brandAnswer)) {
+      score += brandBoost;
+      reasons.push("Matches your brand preference.");
+    }
+
+    const percent = totalMaxScore > 0 ? Math.round((questionScore / totalMaxScore) * 100) : 0;
     const tieBreak = computeTieBreakScore(product, answers, config);
 
     return { product, score, percent, reasons, tieBreak };
@@ -247,10 +261,13 @@ function computeTieBreakScore(
  */
 export function buildRuleFromQuestion(question: QuizQuestion): WeightedQuestionRule {
   const weightings = (question.weightings ?? {}) as LegacyWeightings | WeightingRule;
+  // Use key (e.g. "price_band") when set — this lets TV quiz tree answers (keyed by node ID)
+  // match DB questions. Falls back to UUID id for DB-driven quizzes like smartphones.
+  const questionId = (question.key ?? question.id) as string;
 
   // Modern rule stored in DB
   if (isModernRule(weightings)) {
-    return { questionId: question.id, questionText: question.question, rule: weightings };
+    return { questionId, questionText: question.question, rule: weightings };
   }
 
   // Legacy: {"some_field": 0.25}
@@ -284,7 +301,7 @@ export function buildRuleFromQuestion(question: QuizQuestion): WeightedQuestionR
     reasonsByOption,
   };
 
-  return { questionId: question.id, questionText: question.question, rule };
+  return { questionId, questionText: question.question, rule };
 }
 
 function isModernRule(weightings: LegacyWeightings | WeightingRule): weightings is WeightingRule {

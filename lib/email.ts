@@ -14,7 +14,7 @@ function buildEmailHtml(opts: {
   submissionId: string;
 }): string {
   const { firstName, category, picks, submissionId } = opts;
-  const siteUrl = "https://client-tech-decider.vercel.app";
+  const siteUrl = process.env.SITE_URL ?? process.env.NEXTAUTH_URL ?? "https://client-tech-decider.vercel.app";
 
   const pickRows = picks
     .map((p, i) => {

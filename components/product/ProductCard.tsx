@@ -29,6 +29,10 @@ function pickPrimaryRetailer(retailers: Array<{ key: string; url: string }>) {
   return amazon ?? retailers[0];
 }
 
+function formatRetailerLabel(key: string) {
+  return "Buy on " + key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 function clampRating(n: number) {
   if (Number.isNaN(n)) return 0;
   return Math.max(0, Math.min(5, n));
@@ -36,7 +40,7 @@ function clampRating(n: number) {
 
 function Stars({ rating }: { rating: number }) {
   const r = clampRating(rating);
-  const full = Math.round(r); // keep it simple for MVP
+  const full = Math.round(r);
   return (
     <div className="flex items-center gap-1 text-xs text-muted-foreground">
       <span className="tracking-tight">
@@ -62,20 +66,20 @@ export function ProductCard({
   const isCompact = variant === "compact";
 
   return (
-    <article className="group relative overflow-hidden rounded-2xl border bg-background">
-      {/* Overlay link (card clickable) */}
+    <article className="group relative flex flex-col overflow-hidden rounded-2xl border bg-background">
+      {/* Full-card overlay link — sits below interactive children */}
       <Link
         href={`/products/${product.id}`}
         className="absolute inset-0 z-10"
         aria-label={`View ${product.brand} ${product.model}`}
       />
 
-      {/* Image (padded + centered + does NOT fill/crop) */}
+      {/* Image */}
       <div
         className={[
           "relative overflow-hidden bg-muted/30",
           "flex items-center justify-center",
-          isCompact ? "aspect-[16/10]" : "aspect-[4/3]",
+          isCompact ? "aspect-16/10" : "aspect-4/3",
         ].join(" ")}
       >
         {product.image_url ? (
@@ -84,31 +88,34 @@ export function ProductCard({
             <img
               src={product.image_url}
               alt={`${product.brand} ${product.model}`}
-              className={[
-                "h-full w-full object-contain",
-                "transition-transform duration-300 group-hover:scale-[1.02]",
-              ].join(" ")}
+              className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
               loading="lazy"
             />
           </div>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-            Image placeholder
+            No image
           </div>
         )}
       </div>
-      
 
-      {/* Content */}
-      <div className={isCompact ? "p-4" : "p-5"}>
+      {/* Content — flex-col so bottom elements always align */}
+      <div className={["flex flex-1 flex-col", isCompact ? "p-4" : "p-5"].join(" ")}>
+
+        {/* Top row: brand/title + category badge */}
         <div className="flex items-start justify-between gap-3">
-          <div className="relative z-20">
-            <div className="text-sm text-muted-foreground">{product.brand}</div>
-            <h3 className={isCompact ? "mt-0.5 text-lg font-semibold leading-tight" : "mt-0.5 text-xl font-semibold leading-tight tracking-tight"}>
+          <div className="relative z-20 min-w-0 flex-1">
+            <div className="text-xs font-medium text-muted-foreground">{product.brand}</div>
+            {/* line-clamp-2 keeps all cards the same title height */}
+            <h3 className={[
+              "mt-0.5 line-clamp-2",
+              isCompact
+                ? "text-base font-semibold leading-snug"
+                : "text-[15px] font-semibold leading-snug tracking-tight",
+            ].join(" ")}>
               {product.model}
             </h3>
 
-            {/* Optional: rating (MVP-friendly) */}
             {typeof product.rating === "number" && (
               <div className="mt-2">
                 <Stars rating={product.rating} />
@@ -121,27 +128,32 @@ export function ProductCard({
             )}
           </div>
 
-          <Badge variant="secondary" className="relative z-10 rounded-full">
+          <Badge variant="secondary" className="relative z-20 shrink-0 rounded-full">
             {product.category === "tvs" ? "TV" : "Phone"}
           </Badge>
         </div>
 
+        {/* Price — always rendered in catalogue variant to keep cards aligned */}
         {!isCompact && (
-          <div className="mt-3 text-sm text-muted-foreground relative z-10">
-            {product.price_hint ? `From ${product.price_hint}` : "Price varies by retailer"}
+          <div className="relative z-20 mt-3 text-sm text-muted-foreground">
+            {product.price_hint ? `From ${product.price_hint}` : "See retailer for price"}
           </div>
         )}
 
+        {/* Spacer pushes buy button to bottom of card */}
+        <div className="flex-1" />
+
+        {/* Buy button — z-20 sits above the z-10 overlay so clicks register */}
         {showBuy && (
-          <div className="mt-5 relative z-10">
+          <div className="relative z-20 mt-4">
             {primary ? (
               <Button asChild className="w-full">
                 <a href={`/r/${product.id}/${primary.key}`} target="_blank" rel="noreferrer">
-                  Buy ({primary.key})
+                  {formatRetailerLabel(primary.key)}
                 </a>
               </Button>
             ) : (
-              <div className="text-xs text-muted-foreground">No affiliate links yet</div>
+              <div className="text-xs text-muted-foreground">No purchase links yet</div>
             )}
           </div>
         )}
